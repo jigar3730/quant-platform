@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quant-platform"
+version = "0.1.0"
+description = "Lean quantitative research platform for breakout signal validation"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.1.0",
+    "numpy>=2.0.0",
+    "pandas>=2.2.0",
+    "pyarrow>=18.0.0",
+    "yfinance>=0.2.40",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.8.0",
+]
+viz = [
+    "plotly>=5.0.0",
+    "streamlit>=1.40.0",
+]
+
+[project.scripts]
+quant-scan = "quant_platform.cli:main"
+quant-view = "quant_platform.view:main"
+quant-daily = "quant_platform.daily:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quant_platform"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require network access",
+]
+addopts = "-m 'not integration'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

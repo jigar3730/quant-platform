@@ -1,0 +1,15 @@
+services:
+  scanner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: quant-scanner
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: America/New_York
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: scheduler
