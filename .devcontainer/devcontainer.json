@@ -12,5 +12,5 @@
             ]
         }
     },
-    "postCreateCommand": "uv pip install --system -e .[dev]"
+    "postCreateCommand": "uv pip install --system -e .[dev,viz]"
 }

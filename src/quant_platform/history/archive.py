@@ -1,9 +1,13 @@
-import csv
-import shutil
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 from quant_platform.config import HISTORY_DIR, LOG_DIR
+from quant_platform.history.common import (
+    append_csv_index,
+    archive_timestamp,
+    copy_if_exists,
+    ensure_archive_dir,
+)
 from quant_platform.history.duckdb_store import upsert_scan_report
 
 INDEX_FILE = HISTORY_DIR / "scan_index.csv"
@@ -32,18 +36,16 @@ def archive_scan_outputs(
 ) -> Path:
     """Copy scan outputs into data/history/YYYY-MM-DD/ and update index."""
     scan_date = scan_date or date.today()
-    archive_dir = HISTORY_DIR / scan_date.isoformat()
-    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_dir = ensure_archive_dir(HISTORY_DIR, scan_date)
 
-    _copy_if_exists(csv_path, archive_dir / "breakout_scan_results.csv")
+    copy_if_exists(csv_path, archive_dir / "breakout_scan_results.csv")
     if json_path:
-        _copy_if_exists(json_path, archive_dir / "breakout_scan_report.json")
+        copy_if_exists(json_path, archive_dir / "breakout_scan_report.json")
     if md_path:
-        _copy_if_exists(md_path, archive_dir / "breakout_scan_summary.md")
+        copy_if_exists(md_path, archive_dir / "breakout_scan_summary.md")
 
     log_src = LOG_DIR / "scan.log"
-    if log_src.exists():
-        shutil.copy2(log_src, archive_dir / "scan.log")
+    copy_if_exists(log_src, archive_dir / "scan.log")
 
     if scan_report:
         summary_path = archive_dir / "scan_summary.txt"
@@ -59,11 +61,6 @@ def archive_scan_outputs(
         )
 
     return archive_dir
-
-
-def _copy_if_exists(src: Path, dest: Path) -> None:
-    if src.exists():
-        shutil.copy2(src, dest)
 
 
 def _write_text_summary(path: Path, report: dict) -> None:
@@ -91,25 +88,22 @@ def _write_text_summary(path: Path, report: dict) -> None:
 
 
 def _append_index(scan_date: date, archive_dir: Path, report: dict) -> None:
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     summary = report["scan_summary"]
     tiers = summary["tier_counts"]
-    row = {
-        "scan_date": scan_date.isoformat(),
-        "scan_time": datetime.now().isoformat(timespec="seconds"),
-        "universe_size": summary["universe_size"],
-        "eligible_count": summary["eligible_count"],
-        "tier1_count": tiers["Tier 1"],
-        "tier2_count": tiers["Tier 2"],
-        "tier3_count": tiers["Tier 3"],
-        "filtered_count": tiers["filtered"],
-        "actionable_count": tiers["Tier 1"] + tiers["Tier 2"],
-        "regime": report["market_regime"]["label"],
-        "archive_dir": str(archive_dir),
-    }
-    write_header = not INDEX_FILE.exists()
-    with INDEX_FILE.open("a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=INDEX_COLUMNS)
-        if write_header:
-            writer.writeheader()
-        writer.writerow(row)
+    append_csv_index(
+        INDEX_FILE,
+        INDEX_COLUMNS,
+        {
+            "scan_date": scan_date.isoformat(),
+            "scan_time": archive_timestamp(),
+            "universe_size": summary["universe_size"],
+            "eligible_count": summary["eligible_count"],
+            "tier1_count": tiers["Tier 1"],
+            "tier2_count": tiers["Tier 2"],
+            "tier3_count": tiers["Tier 3"],
+            "filtered_count": tiers["filtered"],
+            "actionable_count": tiers["Tier 1"] + tiers["Tier 2"],
+            "regime": report["market_regime"]["label"],
+            "archive_dir": str(archive_dir),
+        },
+    )

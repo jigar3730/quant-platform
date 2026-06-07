@@ -27,8 +27,6 @@ def assign_tier(row: pd.Series) -> str:
 
     if normalized >= 65:
         return "Tier 2"
-    if normalized >= 80:
-        return "Tier 2"
     return "Tier 3"
 
 

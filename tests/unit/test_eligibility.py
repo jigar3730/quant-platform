@@ -66,3 +66,14 @@ def test_uptrend_passes(date_index):
     eligible, reason = check_eligibility(df)
     assert eligible
     assert reason == "eligible"
+
+
+def test_price_data_anomaly(date_index):
+    df = make_uptrend_df(date_index)
+    df.loc[df.index[-1], "Close"] = df["Close"].iloc[-2] * 5
+    df.loc[df.index[-1], "Open"] = df["Close"].iloc[-1]
+    df.loc[df.index[-1], "High"] = df["Close"].iloc[-1]
+    df.loc[df.index[-1], "Low"] = df["Close"].iloc[-1]
+    eligible, reason = check_eligibility(df)
+    assert not eligible
+    assert reason == "price_data_anomaly"

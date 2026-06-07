@@ -51,11 +51,42 @@ CREATE TABLE IF NOT EXISTS component_scores (
 );
 """
 
+_LYNCH_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS lynch_scans (
+    scan_date DATE PRIMARY KEY,
+    scan_time TIMESTAMP,
+    preset VARCHAR,
+    universe_size INTEGER,
+    passed_count INTEGER,
+    fast_grower_count INTEGER,
+    stalwart_count INTEGER,
+    asset_play_count INTEGER,
+    archive_dir VARCHAR,
+    json_path VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS lynch_ticker_scores (
+    scan_date DATE,
+    ticker VARCHAR,
+    passed BOOLEAN,
+    lynch_score DOUBLE,
+    categories VARCHAR,
+    pe_ratio DOUBLE,
+    peg_ratio DOUBLE,
+    eps_growth_5y DOUBLE,
+    debt_to_equity DOUBLE,
+    institutional_pct DOUBLE,
+    analyst_count INTEGER,
+    PRIMARY KEY (scan_date, ticker)
+);
+"""
+
 
 def _connect() -> duckdb.DuckDBPyConnection:
     HISTORY_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = duckdb.connect(str(HISTORY_DB))
     conn.execute(_SCHEMA_SQL)
+    conn.execute(_LYNCH_SCHEMA_SQL)
     return conn
 
 
@@ -188,8 +219,103 @@ def list_scan_dates() -> list[str]:
     return [str(r[0]) for r in rows]
 
 
+def upsert_lynch_report(
+    report: dict,
+    *,
+    scan_date: date,
+    archive_dir: Path | None = None,
+    json_path: Path | None = None,
+) -> None:
+    """Insert or replace one day's Lynch scan into DuckDB."""
+    summary = report["scan_summary"]
+    cats = summary["category_counts"]
+    scan_key = scan_date.isoformat()
+
+    conn = _connect()
+    try:
+        conn.execute("BEGIN")
+        conn.execute("DELETE FROM lynch_ticker_scores WHERE scan_date = ?", [scan_key])
+        conn.execute("DELETE FROM lynch_scans WHERE scan_date = ?", [scan_key])
+
+        conn.execute(
+            """
+            INSERT INTO lynch_scans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                scan_key,
+                datetime.now().isoformat(timespec="seconds"),
+                summary["preset"],
+                summary["universe_size"],
+                summary["passed_count"],
+                cats["fast_grower"],
+                cats["stalwart"],
+                cats["asset_play"],
+                str(archive_dir) if archive_dir else None,
+                str(json_path) if json_path else None,
+            ],
+        )
+
+        for t in report["tickers"]:
+            m = t.get("metrics") or {}
+            cats_list = ",".join(t.get("categories", []))
+            conn.execute(
+                """
+                INSERT INTO lynch_ticker_scores VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    scan_key,
+                    t["ticker"],
+                    bool(t.get("passed")),
+                    t.get("lynch_score", 0),
+                    cats_list,
+                    t.get("pe_ratio"),
+                    t.get("peg_ratio"),
+                    m.get("eps_growth_5y"),
+                    t.get("debt_to_equity"),
+                    t.get("institutional_pct"),
+                    t.get("analyst_count"),
+                ],
+            )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.close()
+
+
+def get_lynch_ticker_history(ticker: str, *, limit: int = 90) -> list[dict]:
+    if not HISTORY_DB.exists():
+        return []
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT scan_date, passed, lynch_score, categories, peg_ratio, pe_ratio
+            FROM lynch_ticker_scores
+            WHERE ticker = ?
+            ORDER BY scan_date DESC
+            LIMIT ?
+            """,
+            [ticker.upper(), limit],
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {
+            "scan_date": str(r[0]),
+            "passed": r[1],
+            "lynch_score": r[2],
+            "categories": r[3],
+            "peg_ratio": r[4],
+            "pe_ratio": r[5],
+        }
+        for r in rows
+    ]
+
+
 def backfill_from_archives() -> int:
-    """Load all archived JSON reports into DuckDB. Returns count synced."""
+    """Load archived breakout JSON reports into DuckDB."""
     paths = sorted(HISTORY_DIR.glob("*/breakout_scan_report.json"))
     synced = 0
     for path in paths:
@@ -199,6 +325,26 @@ def backfill_from_archives() -> int:
             continue
         report = json.loads(path.read_text())
         upsert_scan_report(
+            report,
+            scan_date=scan_date,
+            archive_dir=path.parent,
+            json_path=path,
+        )
+        synced += 1
+    return synced
+
+
+def backfill_lynch_from_archives() -> int:
+    """Load archived Lynch JSON reports into DuckDB."""
+    paths = sorted(HISTORY_DIR.glob("*/lynch_scan_report.json"))
+    synced = 0
+    for path in paths:
+        try:
+            scan_date = date.fromisoformat(path.parent.name)
+        except ValueError:
+            continue
+        report = json.loads(path.read_text())
+        upsert_lynch_report(
             report,
             scan_date=scan_date,
             archive_dir=path.parent,

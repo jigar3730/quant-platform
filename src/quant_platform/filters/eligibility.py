@@ -6,6 +6,7 @@ from quant_platform.config import (
     MIN_PRICE,
     MIN_TRADING_DAYS,
 )
+from quant_platform.data.quality import has_price_spike, price_spike_ratio
 from quant_platform.indicators import pct_above_low, range_52w, sma
 
 FILTER_LABELS = {
@@ -18,6 +19,7 @@ FILTER_LABELS = {
     "too_close_to_52w_low": "Price less than 30% above 52-week low",
     "too_far_from_52w_high": "Price more than 25% below 52-week high",
     "no_price_data": "No price data available",
+    "price_data_anomaly": "Latest price deviates sharply from recent history (possible bad feed)",
     "eligible": "Passed all eligibility filters",
 }
 
@@ -50,6 +52,19 @@ def eligibility_detail(df: pd.DataFrame) -> dict:
     )
     if price < MIN_PRICE:
         return _fail(checks, "price_below_minimum")
+
+    spike_ratio = price_spike_ratio(df)
+    spike = has_price_spike(df)
+    checks.append(
+        {
+            "rule": "price_stability",
+            "passed": not spike,
+            "value": round(spike_ratio, 2) if spike_ratio is not None else None,
+            "threshold": "latest close within 3x of 20-day median",
+        }
+    )
+    if spike:
+        return _fail(checks, "price_data_anomaly")
 
     avg_vol = float(df["Volume"].tail(20).mean())
     checks.append(

@@ -10,11 +10,22 @@ HISTORY_DB = DATA_DIR / "scan_history.duckdb"
 DEFAULT_OUTPUT_CSV = OUTPUT_DIR / "breakout_scan_results.csv"
 DEFAULT_OUTPUT_JSON = OUTPUT_DIR / "breakout_scan_report.json"
 DEFAULT_OUTPUT_MD = OUTPUT_DIR / "breakout_scan_summary.md"
+DRY_RUN_OUTPUT_DIR = OUTPUT_DIR / "dry_run"
+DEFAULT_DRY_RUN_CSV = DRY_RUN_OUTPUT_DIR / "breakout_scan_results.csv"
+DEFAULT_DRY_RUN_JSON = DRY_RUN_OUTPUT_DIR / "breakout_scan_report.json"
+DEFAULT_DRY_RUN_MD = DRY_RUN_OUTPUT_DIR / "breakout_scan_summary.md"
+DEFAULT_LYNCH_CSV = OUTPUT_DIR / "lynch_scan_results.csv"
+DEFAULT_LYNCH_JSON = OUTPUT_DIR / "lynch_scan_report.json"
+DEFAULT_LYNCH_MD = OUTPUT_DIR / "lynch_scan_summary.md"
+DEFAULT_TICKERS_FILE = DATA_DIR / "tickers.txt"
 
 UNIVERSE_SIZE = 100
+LYNCH_FETCH_WORKERS = 8
 MIN_TRADING_DAYS = 200
 MIN_AVG_VOLUME = 750_000
 MIN_PRICE = 10.0
+MAX_REASONABLE_GROWTH = 3.0
+PRICE_SPIKE_RATIO = 3.0
 LOOKBACK_DAYS = 252
 CACHE_TTL_HOURS = 24
 

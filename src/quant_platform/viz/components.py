@@ -18,7 +18,7 @@ from quant_platform.viz.data import (
 )
 from quant_platform.viz.navigation import ticker_link_html
 from quant_platform.viz.styles import COMPONENT_HELP, PLOTLY_LAYOUT, TIER_BADGE_CSS
-from quant_platform.viz.styles import FILTER_LABELS as FILTER_CHART_LABELS
+from quant_platform.viz.validation import regime_looks_synthetic
 
 
 def apply_chart_style(fig: go.Figure, *, height: int | None = None) -> go.Figure:
@@ -55,6 +55,12 @@ def render_scan_header(report_path: str, summary: dict, regime: dict) -> None:
 
 
 def render_regime_panel(regime: dict) -> None:
+    if regime_looks_synthetic(regime):
+        st.warning(
+            "SPY price looks like **synthetic dry-run data**, not live market data. "
+            "Reload the archived scan from the sidebar, or run "
+            "`quant-scan --report both` without `--dry-run`."
+        )
     st.markdown('<div class="info-card"><h4>Market Regime (SPY)</h4>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("SPY Price", f"${regime['spy_price']}")
@@ -81,7 +87,7 @@ def render_tier_chart(tiers: dict) -> go.Figure:
 def render_exclusion_chart(breakdown: dict) -> go.Figure | None:
     if not breakdown:
         return None
-    labels = [FILTER_CHART_LABELS.get(k, k.replace("_", " ").title()) for k in breakdown]
+    labels = [FILTER_LABELS.get(k, k.replace("_", " ").title()) for k in breakdown]
     fig = px.bar(
         x=list(breakdown.values()),
         y=labels,

@@ -12,7 +12,7 @@ from quant_platform.config import (
 )
 from quant_platform.data.fetch import download_fundamentals, download_prices
 from quant_platform.data.sector import resolve_sector_etf
-from quant_platform.data.universe import fetch_universe
+from quant_platform.data.tickers import resolve_universe
 from quant_platform.filters.eligibility import check_eligibility
 from quant_platform.history.archive import archive_scan_outputs
 from quant_platform.notify.email import send_scan_email
@@ -43,6 +43,8 @@ class PipelineRunner:
         self,
         *,
         tickers: list[str] | None = None,
+        tickers_file: Path | None = None,
+        dynamic_universe: bool = False,
         output: Path = DEFAULT_OUTPUT_CSV,
         use_cache: bool = False,
         dry_run: bool = False,
@@ -53,6 +55,8 @@ class PipelineRunner:
         send_email: bool = False,
     ) -> None:
         self.tickers = tickers
+        self.tickers_file = tickers_file
+        self.dynamic_universe = dynamic_universe
         self.output = output
         self.use_cache = use_cache
         self.dry_run = dry_run
@@ -63,7 +67,11 @@ class PipelineRunner:
         self.send_email = send_email
 
     def run(self) -> pd.DataFrame:
-        universe = self.tickers or fetch_universe()
+        universe = resolve_universe(
+            self.tickers,
+            tickers_file=self.tickers_file,
+            dynamic=self.dynamic_universe,
+        )
         logger.info("Scanning %d tickers", len(universe))
 
         download_tickers = sorted(

@@ -11,6 +11,8 @@ from quant_platform.data.cache import (
     write_fundamentals_cache,
     write_prices_cache,
 )
+from quant_platform.data.fundamentals_helpers import cagr, quarterly_series
+from quant_platform.data.quality import sanitize_growth_rate
 
 logger = logging.getLogger(__name__)
 
@@ -78,33 +80,14 @@ def download_prices(
     return df
 
 
-def _quarterly_series(statement: pd.DataFrame, field: str) -> pd.Series:
-    if statement is None or statement.empty or field not in statement.index:
-        return pd.Series(dtype=float)
-    series = statement.loc[field].dropna()
-    series.index = pd.to_datetime(series.index)
-    return series.sort_index()
-
-
 def _yoy_growth(series: pd.Series, quarters_back: int = 4) -> float | None:
     if len(series) <= quarters_back:
         return None
     recent = series.iloc[-1]
     prior = series.iloc[-1 - quarters_back]
-    if prior == 0 or pd.isna(prior) or pd.isna(recent):
+    if prior <= 0 or pd.isna(prior) or pd.isna(recent):
         return None
-    return (recent / prior) - 1
-
-
-def _cagr(series: pd.Series, years: float = 3.0) -> float | None:
-    quarters = int(years * 4)
-    if len(series) <= quarters:
-        return None
-    recent = series.iloc[-1]
-    prior = series.iloc[-1 - quarters]
-    if prior <= 0 or recent <= 0 or pd.isna(prior) or pd.isna(recent):
-        return None
-    return (recent / prior) ** (1 / years) - 1
+    return sanitize_growth_rate((recent / prior) - 1)
 
 
 def download_fundamentals(
@@ -123,25 +106,29 @@ def download_fundamentals(
         try:
             t = yf.Ticker(ticker)
             income = t.quarterly_income_stmt
-            revenue = _quarterly_series(income, "Total Revenue")
+            revenue = quarterly_series(income, "Total Revenue")
             if revenue.empty:
-                revenue = _quarterly_series(income, "Revenue")
-            eps = _quarterly_series(income, "Diluted EPS")
+                revenue = quarterly_series(income, "Revenue")
+            eps = quarterly_series(income, "Diluted EPS")
             if eps.empty:
-                eps = _quarterly_series(income, "Basic EPS")
+                eps = quarterly_series(income, "Basic EPS")
 
             revenue_yoy = _yoy_growth(revenue)
             revenue_yoy_2q = None
             if len(revenue) > 5:
                 g1 = _yoy_growth(revenue)
-                g2 = (revenue.iloc[-2] / revenue.iloc[-6] - 1) if revenue.iloc[-6] else None
+                g2 = (
+                    (revenue.iloc[-2] / revenue.iloc[-6] - 1)
+                    if revenue.iloc[-6] > 0
+                    else None
+                )
                 if g1 is not None and g2 is not None:
                     revenue_yoy_2q = (g1 + g2) / 2
                 else:
                     revenue_yoy_2q = g1
 
             eps_yoy = _yoy_growth(eps)
-            eps_cagr_3y = _cagr(eps, years=3.0)
+            eps_cagr_3y = sanitize_growth_rate(cagr(eps, years=3.0))
             combined_eps = None
             if eps_yoy is not None and eps_cagr_3y is not None:
                 combined_eps = 0.7 * eps_yoy + 0.3 * eps_cagr_3y

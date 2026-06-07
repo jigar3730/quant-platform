@@ -15,7 +15,23 @@ The scanner identifies high-quality breakout candidates from a universe of activ
 5. Assigns a tier (Tier 1, Tier 2, Tier 3, or filtered)
 6. Exports ranked results to CSV and optional detailed reports
 
-The default universe is the **100 most-active US stocks** from Yahoo Finance (`UNIVERSE_SIZE` in `config.py`). You can override this with `--tickers` or by changing `UNIVERSE_SIZE` before running a scan.
+### Scanner universe
+
+All scanners share the same universe resolution:
+
+| Priority | Source |
+|----------|--------|
+| 1 | `--tickers AAPL,MSFT` on the CLI |
+| 2 | Static file `data/tickers.txt` (edit manually; one symbol per line) |
+| 3 | Dynamic fetch — 100 most-active US stocks from Yahoo (`UNIVERSE_SIZE` in `config.py`) |
+
+Use `data/tickers.txt` for a fixed list you maintain (e.g. Vanguard Small Cap Index VSMAX holdings). Lines starting with `#` are comments. You can also use `data/tickers.json`:
+
+```json
+{"tickers": ["AAPL", "MSFT", "NVDA"]}
+```
+
+Pass `--dynamic-universe` to skip the static file and use Yahoo's most-actives. Pass `--tickers-file PATH` to use a different config path.
 
 ---
 
@@ -85,6 +101,61 @@ quant-view
 
 ---
 
+## Peter Lynch scanner (`quant-lynch`)
+
+A second scanner implements Peter Lynch's quantitative framework from *One Up on Wall Street*.
+
+### Presets
+
+| Preset | Purpose |
+|--------|---------|
+| `summary` | Base screen + Fast Grower / Stalwart / Asset Play tags (default) |
+| `base` | Core Lynch screen only (PEG, growth, debt, neglect, insiders) |
+| `fast_grower` | Small/mid cap 10-bagger hunt (MCap < $5B, EPS growth >= 20%) |
+| `stalwart` | Large-cap anchors (MCap > $10B, P/E < 15, dividend > 1.5%) |
+| `asset_play` | Deep value (P/B < 1, net cash >= 30% of price) |
+
+### Base screen criteria
+
+- PEG <= 1.0
+- EPS growth 5Y between 15% and 30%
+- P/E < 20
+- Debt/Equity < 35%
+- Net cash positive (cash > debt)
+- Institutional ownership < 50% **or** analyst coverage <= 5
+- Insider buying (6m) **or** declining share count
+
+### Anti-filters
+
+- Negative trailing EPS (pre-profit speculative names)
+- ROE below 10% (ROIC proxy when unavailable)
+- Highly volatile quarterly revenue (customer concentration risk proxy)
+
+### Usage
+
+```bash
+quant-lynch --report both
+quant-lynch --preset fast_grower --report both
+quant-lynch --tickers CASH,MU,PLUG --preset summary
+quant-lynch --report both --archive    # archive + DuckDB history
+```
+
+### Outputs
+
+| File | Description |
+|------|-------------|
+| `data/output/lynch_scan_results.csv` | Ranked Lynch candidates |
+| `data/output/lynch_scan_report.json` | Per-ticker checks and metrics |
+| `data/output/lynch_scan_summary.md` | Human-readable summary |
+| `data/history/YYYY-MM-DD/lynch_scan_report.json` | Archived Lynch JSON (with `--archive`) |
+| `data/history/lynch_scan_index.csv` | Day-level Lynch scan index |
+
+### Qualitative overlay (manual)
+
+The JSON/MD reports include Lynch's qualitative reminders — boring business, niche monopoly, recurring demand. **Your job after the scan:** run the "two-minute drill" on the top 10–20 names.
+
+---
+
 ## Running scans (`quant-scan`)
 
 ### Basic commands
@@ -100,7 +171,9 @@ quant-view
 ### All CLI options
 
 ```
---tickers TICKERS     Comma-separated tickers (overrides universe fetch)
+--tickers TICKERS     Comma-separated tickers (overrides ticker config + dynamic fetch)
+--tickers-file PATH   Static ticker list (default: data/tickers.txt)
+--dynamic-universe    Ignore ticker config; fetch most-active stocks from Yahoo
 --output PATH         CSV output path (default: data/output/breakout_scan_results.csv)
 --cache               Read/write cached price and fundamental data
 --dry-run             Run with synthetic data, no network calls
@@ -142,7 +215,7 @@ quant-scan --dry-run --tickers AAA,BBB,CCC --report json
 
 ### What happens during a scan
 
-1. **Universe** — Fetches most-active tickers via `yf.screen("most_actives")`, or uses your `--tickers` list
+1. **Universe** — Uses `data/tickers.txt` when present, else fetches most-active tickers via `yf.screen("most_actives")`, unless you pass `--tickers`
 2. **Download** — Pulls 252+ days of OHLCV for all tickers, SPY, and sector ETFs; downloads quarterly revenue/EPS
 3. **Filter** — Each stock must pass all eligibility checks (see below)
 4. **Score** — Eligible stocks are scored and percentile-ranked within the universe
@@ -316,10 +389,11 @@ quant-view                           # http://localhost:8501
 **Header** — universe size, eligible count, tier breakdown, SPY regime multiplier.
 
 **Sidebar**
-- **Scan to load** — latest output or any archived day (`data/history/YYYY-MM-DD/`)
+- **Breakout scan to load** — latest output or any archived day (`data/history/YYYY-MM-DD/breakout_scan_report.json`)
+- **Lynch scan to load** — latest Lynch output or archived `lynch_scan_report.json`
 - **Filters** — tier, eligible only, actionable only (Tier 1+2), min score, ticker search
 - **Open ticker profile** — jump to any symbol's detail view
-- **Sync archives to DuckDB** — backfill `scan_history.duckdb` from JSON archives
+- **Sync archives to DuckDB** — backfill breakout and Lynch history from JSON archives
 - **Score component guide** — plain-language explanation of each indicator
 
 **Ticker links** — blue links (`?ticker=MU`) appear throughout the app. Clicking one opens that ticker's profile (sets URL query param and sidebar selection).
@@ -362,6 +436,16 @@ Tier 1 and Tier 2 candidates only. Each expander shows key metrics and a link to
 
 #### Compare
 Select 2–3 eligible tickers for an overlay radar chart and side-by-side score table. Profile links above and below the table.
+
+#### Peter Lynch
+Dedicated tab for Lynch scan review (requires `quant-lynch --report both` or an archived Lynch JSON):
+
+- **Overview** — category breakdown (fast grower / stalwart / asset play), score histogram, qualitative overlay
+- **Candidates** — ranked passers with expandable per-ticker checks and metrics
+- **All Tickers** — full universe with passed/category filters and CSV download
+- **Ticker Detail** — Lynch score, P/E, PEG, quantitative checks, optional score history from DuckDB
+
+Pick the scan date in the sidebar **Lynch scan to load** dropdown (latest or `data/history/YYYY-MM-DD/`).
 
 ### Dashboard tips
 
@@ -578,40 +662,22 @@ pytest -m integration     # includes live yfinance tests
 
 ## Project layout (reference)
 
-```
-quant-platform/
-  quant-scan              # CLI: run scanner
-  quant-daily             # CLI: scan + archive + email
-  quant-view              # CLI: launch dashboard
-  data/
-    output/               # latest CSV, JSON, MD
-    history/              # archived scans (with --archive)
-    cache/                # optional parquet cache
-    scan_history.duckdb   # DuckDB score history
-  logs/
-    scan.log
-    cron.log              # Docker scheduler
-  docker/                 # Dockerfile, crontab, compose
-  src/quant_platform/
-    cli.py, daily.py, view.py, dashboard.py
-    config.py
-    data/                 # universe, fetch, cache, news
-    filters/              # eligibility
-    regime/               # SPY regime
-    scoring/              # score components
-    report/               # JSON/Markdown reports
-    history/              # archive.py, duckdb_store.py
-    notify/               # email
-    pipeline/             # runner
-    viz/                  # dashboard UI (components, styles, navigation, data)
-  tests/
-  USER_MANUAL.md
-  Agent.md
-```
+| Path | Role |
+|------|------|
+| `src/quant_platform/` | Python package — scanners, scoring, dashboard |
+| `data/tickers.txt` | Shared static universe (edit manually) |
+| `data/output/` | Latest scan results (gitignored) |
+| `data/history/` | Archived daily snapshots (gitignored) |
+| `data/scan_history.duckdb` | Score trend database (gitignored) |
+| `tests/` | Unit and integration tests |
+| `docker/` | Scheduled scan container |
+
+Full module-by-module documentation: **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)**
 
 ---
 
 ## Further reading
 
-- [Agent.md](Agent.md) — complete strategy specification with scoring formulas
-- [README.md](README.md) — minimal install and run reference
+- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) — folder layout, modules, data flow
+- [Agent.md](Agent.md) — original strategy specification with scoring formulas
+- [README.md](README.md) — install and quick start

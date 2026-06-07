@@ -85,13 +85,3 @@ COMPONENT_HELP = {
     "eps": "Blended recent EPS growth and 3-year CAGR.",
 }
 
-FILTER_LABELS = {
-    "insufficient_history": "Insufficient trading history",
-    "price_below_minimum": "Price below $10",
-    "low_liquidity": "Low liquidity",
-    "trend_misaligned": "Trend misaligned",
-    "sma200_not_rising": "200-day MA not rising",
-    "too_close_to_52w_low": "Too close to 52-week low",
-    "too_far_from_52w_high": "Too far from 52-week high",
-    "no_price_data": "No price data",
-}

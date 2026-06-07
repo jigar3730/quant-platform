@@ -39,7 +39,11 @@ def test_full_universe_dataframe_includes_scores():
     assert mu["RS vs Market"] == 18.0
     assert mu["revenue_yoy_pct"] == 196.3
     assert mu["eps_growth_pct"] == 756.0
+    assert mu["top_signal"] == "RS vs Market (18)"
+    assert mu["tech_score"] == 18.0
+    assert mu["fund_score"] == 30.0
 
     xyz = df[df["ticker"] == "XYZ"].iloc[0]
     assert pd.isna(xyz["RS vs Market"])
     assert xyz["filter_reason"] == "trend_misaligned"
+    assert "aligned" in xyz["filter_label"].lower()

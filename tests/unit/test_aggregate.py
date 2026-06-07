@@ -57,6 +57,20 @@ def test_tier2():
     assert assign_tier(row) == "Tier 2"
 
 
+def test_tier2_high_score_missing_tier1_setup():
+    row = pd.Series(
+        {
+            "eligible": True,
+            "normalized_score": 88,
+            "final_adjusted_score": 75,
+            "compression_score": 4,
+            "accumulation_score": 3,
+            "relative_volume_score": 0,
+        }
+    )
+    assert assign_tier(row) == "Tier 2"
+
+
 def test_tier3():
     row = pd.Series(
         {

@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from quant_platform.config import DEFAULT_OUTPUT_JSON
+from quant_platform.filters.eligibility import FILTER_LABELS
 
 SCORE_LABELS = {
     "rs_market": "RS vs Market",
@@ -83,6 +84,32 @@ def scores_to_dataframe(ticker: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _top_signal(scores: dict) -> str:
+    if not scores:
+        return ""
+    best_key = ""
+    best_score = -1.0
+    for key, comp in scores.items():
+        if not comp:
+            continue
+        score = float(comp.get("score", 0))
+        if score > best_score:
+            best_score = score
+            best_key = key
+    if best_score < 0 or not best_key:
+        return ""
+    return f"{SCORE_LABELS.get(best_key, best_key)} ({best_score:.0f})"
+
+
+def _component_total(scores: dict, keys: tuple[str, ...]) -> float | None:
+    values = []
+    for key in keys:
+        comp = scores.get(key)
+        if comp and comp.get("score") is not None:
+            values.append(float(comp["score"]))
+    return round(sum(values), 1) if values else None
+
+
 def full_universe_dataframe(tickers: list[dict]) -> pd.DataFrame:
     """Full scan table with summary, component scores, and fundamental metrics."""
     rows = []
@@ -90,6 +117,7 @@ def full_universe_dataframe(tickers: list[dict]) -> pd.DataFrame:
         summary = t.get("summary") or {}
         scores = t.get("scores") or {}
         elig = t.get("eligibility") or {}
+        fail_reason = elig.get("fail_reason") or ""
         row: dict = {
             "ticker": t["ticker"],
             "eligible": t.get("eligible", False),
@@ -98,7 +126,12 @@ def full_universe_dataframe(tickers: list[dict]) -> pd.DataFrame:
             "final_score": round(summary.get("final_adjusted_score", 0), 1),
             "normalized_score": round(summary.get("normalized_score", 0), 1),
             "raw_score": round(summary.get("raw_score", 0), 1),
-            "filter_reason": elig.get("fail_reason") or "",
+            "tier_reason": t.get("tier_reason", ""),
+            "top_signal": _top_signal(scores),
+            "tech_score": _component_total(scores, TECHNICAL_KEYS),
+            "fund_score": _component_total(scores, FUNDAMENTAL_KEYS),
+            "filter_reason": fail_reason,
+            "filter_label": FILTER_LABELS.get(fail_reason, fail_reason) if fail_reason else "",
         }
         for key, label in SCORE_LABELS.items():
             comp = scores.get(key)

@@ -11,6 +11,7 @@ A quantitative stock scanning pipeline that identifies high-quality breakout can
 - Tier assignment: Tier 1 (breakout ready), Tier 2 (watchlist), Tier 3, filtered
 - CSV summary output for spreadsheets
 - Optional JSON and Markdown reports with per-indicator explanations
+- **Peter Lynch scanner** (`quant-lynch`) — PEG, growth, debt, neglect, and category presets
 - Interactive Streamlit dashboard with charts, full-universe table, and ticker profiles
 - Live news and market snapshots per ticker (Yahoo Finance)
 - Daily JSON archival (`data/history/YYYY-MM-DD/`) plus DuckDB score history
@@ -58,13 +59,34 @@ quant-scan --report both --archive
 quant-daily --no-email
 ```
 
+## Static ticker universe
+
+Edit `data/tickers.txt` to define a shared watchlist for **all scanners** (`quant-scan`, `quant-lynch`, `quant-daily`). One symbol per line; lines starting with `#` are comments.
+
+```text
+# VSMAX small-cap holdings (update manually)
+SMCI
+FIX
+...
+```
+
+Universe resolution order:
+
+1. `--tickers` on the CLI (highest priority)
+2. `data/tickers.txt` (or `--tickers-file PATH`) when the file exists and has symbols
+3. Dynamic fetch — 100 most-active stocks from Yahoo (`--dynamic-universe` forces this)
+
+JSON is also supported: `data/tickers.json` with `{"tickers": ["AAPL", "MSFT"]}`.
+
 ## CLI reference
 
 ### `quant-scan`
 
 | Flag | Description |
 |------|-------------|
-| `--tickers AAPL,MSFT` | Override universe with comma-separated tickers |
+| `--tickers AAPL,MSFT` | Override ticker config file and dynamic fetch |
+| `--tickers-file PATH` | Static ticker list (default: `data/tickers.txt`) |
+| `--dynamic-universe` | Ignore ticker config; use Yahoo most-actives |
 | `--output PATH` | CSV output path |
 | `--report {json,md,both}` | Write detailed analysis reports |
 | `--report-json PATH` | JSON report path |
@@ -90,9 +112,29 @@ quant-daily --no-email      # scan + archive only
 
 Equivalent to `quant-scan --report both --archive --email`.
 
+### `quant-lynch` — Peter Lynch 10-bagger screen
+
+| Flag | Description |
+|------|-------------|
+| `--preset {base,fast_grower,stalwart,asset_play,summary}` | Lynch screen preset (default: `summary`) |
+| `--tickers AAPL,MSFT` | Override ticker config file and dynamic fetch |
+| `--tickers-file PATH` | Static ticker list (default: `data/tickers.txt`) |
+| `--dynamic-universe` | Ignore ticker config; use Yahoo most-actives |
+| `--report {json,md,both}` | Detailed Lynch report |
+| `--archive` | Archive to `data/history/YYYY-MM-DD/` and upsert DuckDB |
+
+```bash
+quant-lynch --report both                    # full Lynch scan (all categories)
+quant-lynch --preset fast_grower --report both
+quant-lynch --preset stalwart --tickers F,JNJ,KO
+quant-lynch --report both --archive          # scan + history + DuckDB
+```
+
+Outputs: `data/output/lynch_scan_results.csv`, optional JSON/MD reports.
+
 ### `quant-view`
 
-Requires `[viz]`. Reads `data/output/breakout_scan_report.json` by default; can load archived scans from the sidebar.
+Requires `[viz]`. Loads breakout and Lynch reports from `data/output/` or archived days in the sidebar.
 
 ```bash
 quant-scan --report both
@@ -101,15 +143,14 @@ quant-view
 
 ## Dashboard overview
 
-Five tabs:
-
 | Tab | Purpose |
 |-----|---------|
+| **Full Universe** | Interactive scan table, filters, sort, and live ticker preview panel |
 | **Overview** | Market regime, tier chart, exclusion breakdown, score distribution, heatmap, scatter |
-| **All Tickers** | Full universe table (all scores, fundamentals); click row or ticker link for profile |
 | **Ticker Detail** | Fundamentals, technical scores, eligibility, live news, score history |
 | **Actionable Watchlist** | Tier 1 and Tier 2 candidates with profile links |
 | **Compare** | Side-by-side radar chart for 2–3 tickers |
+| **Peter Lynch** | Lynch scan overview, candidates, checks, metrics, and archived history |
 
 Blue ticker links (`?ticker=MU`) open the unified profile from anywhere in the app. Sidebar picker and filters apply across tabs.
 
@@ -117,12 +158,16 @@ Blue ticker links (`?ticker=MU`) open the unified profile from anywhere in the a
 
 | File | Description |
 |------|-------------|
+| `data/tickers.txt` | Shared static universe for all scanners (edit manually) |
 | `data/output/breakout_scan_results.csv` | Ranked summary table |
 | `data/output/breakout_scan_report.json` | Full per-ticker analysis (dashboard input) |
 | `data/output/breakout_scan_summary.md` | Human-readable summary |
-| `data/history/YYYY-MM-DD/` | Daily archive (CSV, JSON, MD, log, summary) |
-| `data/history/scan_index.csv` | Index of archived scans (day-level stats) |
-| `data/scan_history.duckdb` | Per-ticker score history (upserted on `--archive`) |
+| `data/output/lynch_scan_results.csv` | Peter Lynch screen results |
+| `data/output/lynch_scan_report.json` | Lynch scan detail (with `--report`) |
+| `data/history/YYYY-MM-DD/` | Daily archive (breakout and/or Lynch CSV, JSON, MD, log, summary) |
+| `data/history/scan_index.csv` | Index of archived breakout scans |
+| `data/history/lynch_scan_index.csv` | Index of archived Lynch scans |
+| `data/scan_history.duckdb` | Per-ticker score history for breakout and Lynch (upserted on `--archive`) |
 | `logs/scan.log` | Runtime log |
 
 **Note:** Without `--archive`, only `data/output/` is updated (latest scan overwrites previous). JSON per day is stored only when archiving is enabled.
@@ -150,24 +195,14 @@ Sort by `final_adjusted_score` descending. See **[USER_MANUAL.md](USER_MANUAL.md
 
 ```
 quant-platform/
-  src/quant_platform/
-    cli.py, daily.py, view.py, dashboard.py
-    config.py
-    data/           # universe, fetch, cache, news
-    filters/        # eligibility
-    regime/         # SPY market regime
-    scoring/        # components and aggregation
-    report/         # JSON/Markdown builder
-    history/        # JSON archive + DuckDB store
-    notify/         # email alerts
-    pipeline/       # orchestration
-    viz/            # dashboard components, styles, navigation
-  data/output/      # latest scan results
-  data/history/     # archived scans
-  tests/
-  Agent.md          # strategy specification
-  USER_MANUAL.md    # detailed user guide
+  src/quant_platform/   # Python package (scanners, dashboard, scoring)
+  data/                 # tickers.txt (config) + output/ + history/ (generated)
+  tests/                # unit + integration
+  docker/               # scheduled scan container
+  logs/                 # scan logs
 ```
+
+See **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** for the full layout: every module, data lifecycle, entry points, and conventions.
 
 ## Development
 
@@ -179,8 +214,9 @@ ruff check src tests
 
 ## Documentation
 
+- **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** — folder layout, modules, data flow, conventions
 - **[USER_MANUAL.md](USER_MANUAL.md)** — installation, CLI, outputs, scoring, dashboard, history, email, Docker
-- **[Agent.md](Agent.md)** — complete strategy specification
+- **[Agent.md](Agent.md)** — original strategy specification
 
 ## License
 

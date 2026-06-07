@@ -14,10 +14,13 @@ data/cache/
 data/output/*.csv
 data/output/*.json
 data/output/*.md
+data/output/dry_run/
+data/output/lynch_*
 data/output/ui_screenshots/
 data/output/*.png
 data/history/*/
 data/history/scan_index.csv
+data/history/lynch_scan_index.csv
 data/scan_history.duckdb
 logs/*.log
 
