@@ -4,7 +4,7 @@ A quantitative stock scanning pipeline that identifies high-quality breakout can
 
 ## Features
 
-- Scans the 100 most-active US stocks by default (or a custom ticker list)
+- Scans the 250 most-active US stocks by default (or a custom ticker list)
 - Hard filters for liquidity, trend alignment, price, and 52-week range
 - Nine scoring components: relative strength, volume, compression, pattern, resistance, revenue, EPS
 - SPY market regime multiplier (strong / neutral / weak)
