@@ -28,10 +28,10 @@ A quantitative stock scanning pipeline that identifies high-quality breakout can
 ```bash
 cd quant-platform
 
-uv pip install -e .              # core scanner
-uv pip install -e .[dev]           # + pytest, ruff
-uv pip install -e .[viz]           # + Streamlit dashboard
-uv pip install -e .[dev,viz]       # full setup
+pip install -e .              # core scanner
+pip install -e .[dev]           # + pytest, ruff
+pip install -e .[viz]           # + Streamlit dashboard
+pip install -e .[dev,viz]       # full setup
 ```
 
 Devcontainer users: dependencies install automatically via `postCreateCommand`.
