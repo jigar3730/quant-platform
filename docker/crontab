@@ -1,5 +1,23 @@
-# Run the Breakout Scanner DAILY at 5:00 PM (Monday-Friday)
-0 17 * * 1-5 . /etc/environment; quant-daily >> /app/logs/cron.log 2>&1
+# ==============================================================================
+# QUANT SCANNER SCHEDULES
+# Cron Format: [Min] [Hour] [Day-of-Month] [Month] [Day-of-Week] [User] [Command]
+# ==============================================================================
 
-# Run the Peter Lynch Scanner ONCE A WEEK on Fridays at 6:00 PM
-0 18 * * 5 . /etc/environment; quant-lynch --report both --archive >> /app/logs/cron.log 2>&1
+# ------------------------------------------------------------------------------
+# Breakout Scanner
+# ------------------------------------------------------------------------------
+# Runs: Mon, Tue, Wed, Thu, Fri at 17:17 (5:17 PM EDT)
+# Details: Loads system environment variables, runs the core breakout daily scan,
+#          and appends execution output to cron.log.
+# ------------------------------------------------------------------------------
+17 17 * * 1-5 root . /etc/environment; quant-daily >> /app/logs/cron.log 2>&1
+
+# ------------------------------------------------------------------------------
+# Peter Lynch Value Scanner
+# ------------------------------------------------------------------------------
+# Runs: Fridays only at 18:17 (6:17 PM EDT)
+# Details: Loads system environment variables, runs the weekly lynch valuation 
+#          analysis, compiles both types of reports, archives results, 
+#          and appends logs to cron.log.
+# ------------------------------------------------------------------------------
+17 18 * * 5 root . /etc/environment; quant-lynch --report both --archive >> /app/logs/cron.log 2>&1
