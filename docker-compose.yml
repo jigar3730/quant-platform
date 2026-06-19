@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   scanner:
     build:
@@ -10,6 +12,8 @@ services:
     environment:
       TZ: America/New_York
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - /mnt/fast/quant-data/data:/app/data
+      - /mnt/fast/quant-data/logs:/app/logs
     command: scheduler
+    ports:
+      - "5001:5000"
