@@ -6,6 +6,51 @@ def sma(series: pd.Series, window: int) -> pd.Series:
     return series.rolling(window, min_periods=window).mean()
 
 
+def ema(series: pd.Series, window: int) -> pd.Series:
+    return series.ewm(span=window, adjust=False, min_periods=window).mean()
+
+
+def rsi(close: pd.Series, window: int = 14) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / window, min_periods=window, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / window, min_periods=window, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100 - (100 / (1 + rs))
+
+
+def atr(df: pd.DataFrame, window: int = 14) -> pd.Series:
+    high = df["High"]
+    low = df["Low"]
+    close = df["Close"]
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [(high - low), (high - prev_close).abs(), (low - prev_close).abs()],
+        axis=1,
+    ).max(axis=1)
+    return tr.rolling(window, min_periods=window).mean()
+
+
+def resample_weekly(daily_df: pd.DataFrame) -> pd.DataFrame:
+    """Resample daily OHLCV to weekly (Friday close)."""
+    df = daily_df.set_index("Date").sort_index()
+    weekly = df.resample("W-FRI").agg(
+        {
+            "Open": "first",
+            "High": "max",
+            "Low": "min",
+            "Close": "last",
+            "Volume": "sum",
+        }
+    )
+    weekly = weekly.dropna(subset=["Close"]).reset_index()
+    weekly.rename(columns={"Date": "Date"}, inplace=True)
+    if "ticker" in daily_df.columns:
+        weekly["ticker"] = daily_df["ticker"].iloc[0]
+    return weekly
+
+
 def return_over_days(series: pd.Series, days: int) -> float | None:
     if len(series) <= days:
         return None

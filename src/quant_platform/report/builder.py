@@ -1,39 +1,6 @@
 from quant_platform.filters.eligibility import FILTER_LABELS, eligibility_detail
 from quant_platform.report.diagnostics import score_components_detail
-
-
-def explain_tier(row: dict) -> str:
-    if not row.get("eligible"):
-        reason = row.get("filter_reason", "unknown")
-        return FILTER_LABELS.get(reason, reason)
-
-    tier = row.get("tier", "")
-    normalized = row.get("normalized_score", 0)
-    final = row.get("final_adjusted_score", 0)
-    compression = row.get("compression_score", 0)
-    accumulation = row.get("accumulation_score", 0)
-    rel_vol = row.get("relative_volume_score", 0)
-
-    if tier == "Tier 1":
-        return (
-            f"Breakout ready: score {normalized:.1f} (>=80), adjusted {final:.1f} (>=70), "
-            f"compression {compression:.1f} (>=8), volume signal met"
-        )
-
-    if tier == "Tier 2":
-        if normalized >= 80:
-            missing = []
-            if final < 70:
-                missing.append(f"adjusted score {final:.1f} < 70")
-            if compression < 8:
-                missing.append(f"compression {compression:.1f} < 8")
-            if accumulation < 8 and rel_vol < 5:
-                missing.append("accumulation and relative volume below Tier 1 thresholds")
-            joined = "; ".join(missing)
-            return f"High score ({normalized:.1f}) but missing Tier 1 criteria: {joined}"
-        return f"Watchlist candidate: normalized score {normalized:.1f} (65-79 range)"
-
-    return f"Below watchlist threshold: normalized score {normalized:.1f} (<65)"
+from quant_platform.strategies.breakout.tiers import explain_tier
 
 
 def build_ticker_report(
@@ -130,6 +97,7 @@ def build_scan_report(
     fund_map: dict,
     regime_detail: dict,
     scores_by_ticker: dict,
+    strategy_id: str = "breakout",
 ) -> dict:
     tickers_report = []
     for ticker in universe:
@@ -158,6 +126,7 @@ def build_scan_report(
         filter_counts[reason] = filter_counts.get(reason, 0) + 1
 
     return {
+        "strategy_id": strategy_id,
         "scan_summary": {
             "universe_size": len(universe),
             "eligible_count": len(eligible),

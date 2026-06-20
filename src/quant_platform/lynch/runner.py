@@ -25,6 +25,7 @@ from quant_platform.lynch.categories import (
 from quant_platform.lynch.filters import apply_anti_filters, apply_base_screen, lynch_score
 from quant_platform.lynch.metrics import fetch_lynch_metrics_batch
 from quant_platform.lynch.report import export_json, export_markdown
+from quant_platform.strategies.registry import get_strategy
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class LynchScannerRunner:
         self.tickers_file = tickers_file
         self.dynamic_universe = dynamic_universe
         self.preset = preset
+        self._strategy = get_strategy("lynch")
         self.output = output
         self.report = report
         self.report_json = report_json
@@ -194,6 +196,7 @@ class LynchScannerRunner:
             reverse=True,
         )
         return {
+            "strategy_id": "lynch",
             "scan_summary": {
                 "scanner": "peter_lynch",
                 "preset": self.preset,

@@ -29,6 +29,7 @@ viz = [
 [project.scripts]
 quant-scan = "quant_platform.cli:main"
 quant-lynch = "quant_platform.lynch.cli:main"
+quant-swing = "quant_platform.swing.cli:main"
 quant-view = "quant_platform.view:main"
 quant-daily = "quant_platform.daily:main"
 
