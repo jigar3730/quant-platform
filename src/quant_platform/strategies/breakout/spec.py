@@ -25,7 +25,7 @@ from quant_platform.strategies.breakout.filters import BreakoutEligibilityFilter
 from quant_platform.strategies.breakout.tiers import assign_tier
 
 
-@dataclass
+@dataclass(frozen=True)
 class BreakoutStrategySpec(StrategySpec):
     def aggregate(self, ticker: TickerResult, regime: MarketRegime) -> TickerResult:
         return aggregate_breakout_ticker(ticker, regime)

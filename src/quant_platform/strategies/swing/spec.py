@@ -21,7 +21,7 @@ from quant_platform.strategies.swing.aggregate import (
 from quant_platform.strategies.swing.filters import SwingEligibilityFilter
 
 
-@dataclass
+@dataclass(frozen=True)
 class SwingStrategySpec(StrategySpec):
     def aggregate(self, ticker, regime: MarketRegime):
         return aggregate_swing_ticker(ticker, regime)

@@ -56,7 +56,7 @@ class FakeTickerFactor:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class FakeStrategySpec(StrategySpec):
     def aggregate(self, ticker: TickerResult, regime: MarketRegime) -> TickerResult:
         raw = sum(fr.score for fr in ticker.factors.values())
