@@ -8,7 +8,10 @@ from quant_platform.config import (
     DEFAULT_OUTPUT_JSON,
     DEFAULT_OUTPUT_MD,
 )
-from quant_platform.engine.export import ticker_results_to_legacy_scores
+from quant_platform.engine.export import (
+    ticker_results_filter_checks,
+    ticker_results_to_legacy_scores,
+)
 from quant_platform.engine.runner import StrategyEngine
 from quant_platform.history.archive import archive_scan_outputs
 from quant_platform.notify.email import send_scan_email
@@ -77,6 +80,7 @@ class PipelineRunner:
                 regime_detail=scan_result.regime_detail,
                 scores_by_ticker=scores_by_ticker,
                 strategy_id=scan_result.strategy_id,
+                filter_checks_by_ticker=ticker_results_filter_checks(scan_result.tickers),
             )
             if self.report in ("json", "both"):
                 export_json_report(scan_report, self.report_json)

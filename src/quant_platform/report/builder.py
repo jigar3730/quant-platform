@@ -1,4 +1,4 @@
-from quant_platform.filters.eligibility import FILTER_LABELS, eligibility_detail
+from quant_platform.filters.eligibility import FILTER_LABELS
 from quant_platform.report.diagnostics import score_components_detail
 from quant_platform.strategies.breakout.tiers import explain_tier as explain_breakout_tier
 
@@ -15,6 +15,28 @@ def _factor_scores_detail(scores: dict) -> dict:
             "meaning": f"{name.replace('_', ' ').title()} component score",
         }
     return detail
+
+
+def _build_score_detail(
+    *,
+    strategy_id: str,
+    scores: dict,
+    stock_df,
+    spy_df,
+    sector_df,
+    sector_etf: str | None,
+    fund: dict,
+) -> dict:
+    if strategy_id == "swing":
+        return _factor_scores_detail(scores)
+    return score_components_detail(
+        stock_df=stock_df,
+        spy_df=spy_df,
+        sector_df=sector_df,
+        sector_etf=sector_etf,
+        fund=fund,
+        scores=scores,
+    )
 
 
 def _explain_tier(row: dict, strategy_id: str) -> str:
@@ -72,6 +94,7 @@ def build_ticker_report(
     fund: dict,
     scores: dict | None,
     strategy_id: str = "breakout",
+    filter_checks: list | None = None,
 ) -> dict:
     if stock_df is None or stock_df.empty:
         eligibility = {
@@ -95,53 +118,44 @@ def build_ticker_report(
             },
         }
 
-    elig = eligibility_detail(stock_df)
-    elig["summary"] = (
+    eligible = bool(row.get("eligible", False))
+    filter_reason = row.get("filter_reason")
+    fail_reason = None if eligible else filter_reason
+    summary_text = (
         "Passed all eligibility filters"
-        if elig["passed"]
-        else FILTER_LABELS.get(elig["fail_reason"], elig["fail_reason"])
+        if eligible
+        else FILTER_LABELS.get(filter_reason, filter_reason or "unknown")
     )
+    eligibility = {
+        "passed": eligible,
+        "fail_reason": fail_reason,
+        "checks": filter_checks or [],
+        "summary": summary_text,
+    }
 
-    if not elig["passed"]:
-        return {
-            "ticker": ticker,
-            "verdict": "excluded",
-            "eligible": False,
-            "tier": "filtered",
-            "tier_reason": elig["summary"],
-            "eligibility": elig,
-            "scores": None,
-            "summary": {
-                "raw_score": 0,
-                "normalized_score": 0,
-                "final_adjusted_score": 0,
-            },
-        }
-
-    score_detail = (
-        _factor_scores_detail(scores or {})
-        if strategy_id == "swing"
-        else score_components_detail(
+    score_detail = None
+    if scores:
+        score_detail = _build_score_detail(
+            strategy_id=strategy_id,
+            scores=scores,
             stock_df=stock_df,
             spy_df=spy_df,
             sector_df=sector_df,
             sector_etf=sector_etf,
             fund=fund,
-            scores=scores or {},
         )
-    )
 
     return {
         "ticker": ticker,
-        "verdict": "eligible",
-        "eligible": True,
+        "verdict": "eligible" if eligible else "excluded",
+        "eligible": eligible,
         "tier": row.get("tier"),
         "tier_reason": _explain_tier(row, strategy_id),
         "sector_etf": sector_etf,
-        "eligibility": elig,
+        "eligibility": eligibility,
         "scores": score_detail,
         "summary": {
-            "raw_score": row.get("raw_score"),
+            "raw_score": row.get("raw_score", 0),
             "normalized_score": round(row.get("normalized_score", 0), 2),
             "regime_multiplier": row.get("regime_multiplier"),
             "final_adjusted_score": round(row.get("final_adjusted_score", 0), 2),
@@ -161,7 +175,9 @@ def build_scan_report(
     regime_detail: dict,
     scores_by_ticker: dict,
     strategy_id: str = "breakout",
+    filter_checks_by_ticker: dict[str, list] | None = None,
 ) -> dict:
+    checks_map = filter_checks_by_ticker or {}
     tickers_report = []
     for ticker in universe:
         row = results_df[results_df["ticker"] == ticker].iloc[0].to_dict()
@@ -178,6 +194,7 @@ def build_scan_report(
                 fund=fund_map.get(ticker, {}),
                 scores=scores_by_ticker.get(ticker),
                 strategy_id=strategy_id,
+                filter_checks=checks_map.get(ticker, []),
             )
         )
 

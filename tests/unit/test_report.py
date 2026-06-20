@@ -61,6 +61,35 @@ def test_build_ticker_report_excluded(date_index):
     assert not report["eligibility"]["passed"]
 
 
+def test_build_ticker_report_filtered_with_scores(date_index):
+    df = make_uptrend_df(date_index)
+    report = build_ticker_report(
+        ticker="TEST",
+        row={
+            "tier": "filtered",
+            "filter_reason": "trend_misaligned",
+            "eligible": False,
+            "raw_score": 25.0,
+            "normalized_score": 41.7,
+            "final_adjusted_score": 41.7,
+            "regime_multiplier": 1.0,
+        },
+        stock_df=df,
+        spy_df=df,
+        sector_df=None,
+        sector_etf="SPY",
+        fund={},
+        scores={"trend_score": 10.0, "pullback_score": 8.0},
+        strategy_id="swing",
+        filter_checks=[{"rule": "weekly_uptrend", "passed": False}],
+    )
+    assert report["verdict"] == "excluded"
+    assert report["scores"] is not None
+    assert report["scores"]["trend"]["score"] == 10.0
+    assert report["summary"]["raw_score"] == 25.0
+    assert report["eligibility"]["fail_reason"] == "trend_misaligned"
+
+
 def test_export_reports(tmp_path: Path, date_index):
     df = make_uptrend_df(date_index)
     report = build_ticker_report(

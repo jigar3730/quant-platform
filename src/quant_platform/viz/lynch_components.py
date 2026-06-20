@@ -60,11 +60,14 @@ def render_lynch_history_chart(ticker: str) -> go.Figure | None:
     history = get_lynch_ticker_history(ticker)
     if len(history) < 2:
         return None
-    hist_df = pd.DataFrame(history).sort_values("scan_date")
+    hist_df = pd.DataFrame(history)
+    sort_cols = ["scan_date", "scan_time"] if "scan_time" in hist_df.columns else ["scan_date"]
+    hist_df = hist_df.sort_values(sort_cols)
+    x_col = "scan_time" if "scan_time" in hist_df.columns else "scan_date"
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=hist_df["scan_date"],
+            x=hist_df[x_col],
             y=hist_df["lynch_score"],
             mode="lines+markers",
             name="Lynch score",

@@ -361,11 +361,14 @@ def render_ticker_news_panel(ticker: str, *, compact: bool = False) -> None:
 def render_score_history(history: list[dict], ticker: str) -> go.Figure | None:
     if not history:
         return None
-    df = pd.DataFrame(history).sort_values("scan_date")
+    df = pd.DataFrame(history)
+    sort_cols = ["scan_date", "scan_time"] if "scan_time" in df.columns else ["scan_date"]
+    df = df.sort_values(sort_cols)
+    x_col = "scan_time" if "scan_time" in df.columns else "scan_date"
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=df["scan_date"],
+            x=df[x_col],
             y=df["final_score"],
             mode="lines+markers",
             name="Final score",
@@ -374,7 +377,7 @@ def render_score_history(history: list[dict], ticker: str) -> go.Figure | None:
     )
     fig.add_trace(
         go.Scatter(
-            x=df["scan_date"],
+            x=df[x_col],
             y=df["normalized_score"],
             mode="lines+markers",
             name="Normalized",
@@ -441,14 +444,14 @@ def render_ticker_detail(
     if show_history:
         from quant_platform.history.duckdb_store import get_ticker_history
 
-        history = get_ticker_history(ticker)
+        history = get_ticker_history(ticker, strategy_id="breakout")
         if history:
             hist_fig = render_score_history(history, ticker)
             if hist_fig:
                 st.plotly_chart(hist_fig, use_container_width=True)
-            hist_df = pd.DataFrame(history)[
-                ["scan_date", "tier", "final_score", "normalized_score"]
-            ]
+            hist_cols = ["scan_date", "scan_time", "tier", "final_score", "normalized_score"]
+            hist_cols = [c for c in hist_cols if c in history[0]]
+            hist_df = pd.DataFrame(history)[hist_cols]
             with st.expander(f"Score history ({len(history)} scans)"):
                 st.dataframe(hist_df, use_container_width=True, hide_index=True)
 
