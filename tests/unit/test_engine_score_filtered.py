@@ -18,7 +18,6 @@ def test_swing_filtered_ticker_still_has_factor_scores():
         assert t.raw_score >= 0
         assert t.normalized_score >= 0
         assert t.tier == "filtered"
-        assert not t.penalties
 
 
 def test_breakout_filtered_ticker_still_has_factor_scores(monkeypatch):
@@ -38,7 +37,6 @@ def test_breakout_filtered_ticker_still_has_factor_scores(monkeypatch):
         assert t.factors
         assert t.final_score >= 0
         assert t.raw_score > 0
-        assert not t.penalties
 
 
 def test_filtered_rows_in_csv_have_component_scores():
@@ -55,3 +53,24 @@ def test_filtered_rows_in_csv_have_component_scores():
         assert col in df.columns
         assert (df[col].fillna(0) >= 0).all()
         assert df[col].sum() > 0
+
+
+def test_no_price_data_ticker_has_empty_filter_checks():
+    from quant_platform.engine.types import TickerResult
+    from quant_platform.engine.export import ticker_results_filter_checks
+
+    tr = TickerResult(
+        ticker="MISSING",
+        eligible=False,
+        filter_reason="no_price_data",
+        metadata={"filter_checks": []},
+    )
+    assert ticker_results_filter_checks([tr]) == {"MISSING": []}
+
+    tr_none_meta = TickerResult(
+        ticker="BAD",
+        eligible=False,
+        filter_reason="no_price_data",
+        metadata=None,  # type: ignore[arg-type]
+    )
+    assert ticker_results_filter_checks([tr_none_meta]) == {"BAD": []}

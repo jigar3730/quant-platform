@@ -60,6 +60,7 @@ class StrategyEngine:
                     ticker=ticker,
                     eligible=False,
                     filter_reason="no_price_data",
+                    metadata={"filter_checks": []},
                 )
                 continue
 
@@ -115,11 +116,10 @@ class StrategyEngine:
                 finalized.append(tr)
                 continue
 
-            if tr.eligible:
-                for penalty in self.spec.penalties:
-                    amount = penalty.apply(ctx, tr)
-                    if amount:
-                        tr.penalties[penalty.name] = amount
+            for penalty in self.spec.penalties:
+                amount = penalty.apply(ctx, tr)
+                if amount:
+                    tr.penalties[penalty.name] = amount
 
             tr = self.spec.aggregate(tr, ctx.regime)
             if tr.eligible:

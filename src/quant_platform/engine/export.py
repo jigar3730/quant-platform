@@ -67,4 +67,7 @@ def ticker_results_to_legacy_scores(tickers: list[TickerResult]) -> dict[str, di
 
 
 def ticker_results_filter_checks(tickers: list[TickerResult]) -> dict[str, list]:
-    return {t.ticker: list(t.metadata.get("filter_checks", [])) for t in tickers}
+    return {
+        t.ticker: list((t.metadata or {}).get("filter_checks", []))
+        for t in tickers
+    }
