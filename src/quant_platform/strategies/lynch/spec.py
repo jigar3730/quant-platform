@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from quant_platform.engine.protocols import StrategySpec
 from quant_platform.lynch import config as lynch_cfg
@@ -13,9 +13,6 @@ class LynchStrategySpec(StrategySpec):
     """Config holder; Lynch uses FundamentalStrategyRunner, not price-based engine."""
 
     preset: str = "summary"
-    filters: list = field(default_factory=list)
-    factor_bindings: list = field(default_factory=list)
-    penalties: list = field(default_factory=list)
 
     def aggregate(self, ticker, regime):
         raise NotImplementedError("Lynch uses FundamentalStrategyRunner")
