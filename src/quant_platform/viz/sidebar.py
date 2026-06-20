@@ -4,66 +4,53 @@ from __future__ import annotations
 
 import streamlit as st
 
-from quant_platform.config import DEFAULT_OUTPUT_JSON, HISTORY_DIR
 from quant_platform.history.duckdb_store import backfill_from_archives, backfill_lynch_from_archives
-from quant_platform.viz.breakout_filters import BreakoutFilters
-from quant_platform.viz.lynch_data import list_lynch_report_paths
-from quant_platform.viz.navigation import set_detail_ticker, sync_detail_ticker
-from quant_platform.viz.styles import COMPONENT_HELP
+from quant_platform.viz.shared.navigation import set_detail_ticker, sync_detail_ticker
+from quant_platform.viz.strategy.filters import ScanFilters, tier_filter_options
+from quant_platform.viz.strategy.registry import VizStrategyConfig, list_viz_strategies
+from quant_platform.viz.strategy.reports import list_report_paths
 
 
-def _breakout_report_options() -> dict[str, str]:
-    history_files = sorted(HISTORY_DIR.glob("*/breakout_scan_report.json"), reverse=True)
-    options = {str(DEFAULT_OUTPUT_JSON): "Latest (data/output)"}
-    for path in history_files:
-        options[str(path)] = f"Archive {path.parent.name}"
-    default_path = str(DEFAULT_OUTPUT_JSON)
-    if default_path not in options:
-        options[default_path] = "Latest (data/output)"
-    return options
-
-
-def render_sidebar_controls() -> tuple[str, str, BreakoutFilters]:
+def render_strategy_sidebar() -> tuple[VizStrategyConfig, str, ScanFilters | None]:
     st.sidebar.title("Controls")
 
-    history_options = _breakout_report_options()
-    selected_label = st.sidebar.selectbox(
-        "Breakout scan to load",
-        options=list(history_options.values()),
-        index=0,
-    )
-    report_path = next(key for key, label in history_options.items() if label == selected_label)
-    report_path = st.sidebar.text_input("Breakout report path", value=report_path)
+    strategies = list_viz_strategies()
+    labels = [s.label for s in strategies]
+    selected_label = st.sidebar.selectbox("Strategy", labels, index=0)
+    config = next(s for s in strategies if s.label == selected_label)
 
-    lynch_options = list_lynch_report_paths()
-    lynch_labels = list(lynch_options.values()) if lynch_options else ["No Lynch reports"]
-    lynch_selected_label = st.sidebar.selectbox(
-        "Lynch scan to load",
-        options=lynch_labels,
-        index=0,
-    )
-    lynch_report_path = (
-        next(key for key, label in lynch_options.items() if label == lynch_selected_label)
-        if lynch_options
-        else ""
-    )
-    if lynch_options:
-        lynch_report_path = st.sidebar.text_input("Lynch report path", value=lynch_report_path)
+    report_options = list_report_paths(config)
+    if not report_options:
+        report_path = config.default_report_path
+    else:
+        option_labels = list(report_options.values())
+        selected_report_label = st.sidebar.selectbox("Report", option_labels, index=0)
+        report_path = next(
+            key for key, label in report_options.items() if label == selected_report_label
+        )
+    report_path = st.sidebar.text_input("Report path", value=report_path)
 
-    st.sidebar.divider()
-    st.sidebar.header("Breakout filters")
-    filters = BreakoutFilters(
-        tier=st.sidebar.selectbox("Tier", ["All", "Tier 1", "Tier 2", "Tier 3", "filtered"]),
-        eligible_only=st.sidebar.checkbox("Eligible only", value=False),
-        actionable_only=st.sidebar.checkbox("Actionable only (Tier 1+2)", value=False),
-        min_score=st.sidebar.slider("Min final score", 0.0, 100.0, 0.0, 5.0),
-        search=st.sidebar.text_input("Search ticker", "").strip().upper(),
-    )
+    filters: ScanFilters | None = None
+    if config.page_set == "price":
+        st.sidebar.divider()
+        st.sidebar.header(f"{config.label} filters")
+        actionable_label = " + ".join(config.actionable_tiers)
+        filters = ScanFilters(
+            tier=st.sidebar.selectbox("Tier", tier_filter_options(config)),
+            eligible_only=st.sidebar.checkbox("Eligible only", value=False),
+            actionable_only=st.sidebar.checkbox(
+                f"Actionable only ({actionable_label})",
+                value=False,
+            ),
+            min_score=st.sidebar.slider("Min final score", 0.0, 100.0, 0.0, 5.0),
+            search=st.sidebar.text_input("Search ticker", "").strip().upper(),
+        )
 
-    with st.sidebar.expander("Score component guide"):
-        for key, text in COMPONENT_HELP.items():
-            label = key.replace("_", " ").title()
-            st.markdown(f"**{label}** — {text}")
+        if config.component_help:
+            with st.sidebar.expander("Score component guide"):
+                for key, text in config.component_help.items():
+                    label = config.score_labels.get(key, key.replace("_", " ").title())
+                    st.markdown(f"**{label}** — {text}")
 
     if st.sidebar.button("Sync archives to DuckDB"):
         breakout_synced = backfill_from_archives()
@@ -72,7 +59,7 @@ def render_sidebar_controls() -> tuple[str, str, BreakoutFilters]:
             f"Synced {breakout_synced} breakout + {lynch_synced} Lynch archived scan(s)."
         )
 
-    return report_path, lynch_report_path, filters
+    return config, report_path, filters
 
 
 def render_sidebar_ticker_picker(all_symbols: list[str]) -> str | None:

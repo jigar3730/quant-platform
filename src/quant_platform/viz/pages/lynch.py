@@ -1,4 +1,4 @@
-"""Peter Lynch dashboard components."""
+"""Peter Lynch dashboard pages."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ import streamlit as st
 
 from quant_platform.history.duckdb_store import get_lynch_ticker_history
 from quant_platform.lynch.categories import QUALITATIVE_OVERLAY
-from quant_platform.viz.components import apply_chart_style
-from quant_platform.viz.display import format_display_value
-from quant_platform.viz.lynch_data import (
+from quant_platform.viz.shared.components import apply_chart_style
+from quant_platform.viz.shared.display import format_display_value
+from quant_platform.viz.shared.navigation import ticker_link_html
+from quant_platform.viz.strategy.lynch_reports import (
     CATEGORY_COLORS,
     lynch_checks_dataframe,
     lynch_tickers_to_dataframe,
 )
-from quant_platform.viz.navigation import ticker_link_html
 
 
 def render_lynch_header(report_path: str, summary: dict) -> None:
@@ -137,7 +137,7 @@ def render_lynch_ticker_detail(ticker: str, data: dict) -> None:
             st.dataframe(pd.DataFrame(metric_rows), use_container_width=True, hide_index=True)
 
 
-def render_lynch_tab(report: dict, report_path: str) -> None:
+def render_lynch_pages(report: dict, report_path: str) -> None:
     summary = report["scan_summary"]
     tickers = report["tickers"]
     candidates = report.get("candidates", [])

@@ -9,11 +9,14 @@ PLOTLY_LAYOUT = {
     "title": {"font": {"size": 14, "color": "#0f172a"}},
 }
 
-TIER_BADGE_CSS = {
-    "Tier 1": "background:#dcfce7;color:#166534;",
-    "Tier 2": "background:#fef9c3;color:#854d0e;",
-    "Tier 3": "background:#f1f5f9;color:#475569;",
-    "filtered": "background:#fee2e2;color:#991b1b;",
+DEFAULT_TIER_COLORS = {
+    "Tier 1": "#22c55e",
+    "Tier 2": "#eab308",
+    "Tier 3": "#94a3b8",
+    "A": "#22c55e",
+    "B": "#eab308",
+    "C": "#94a3b8",
+    "filtered": "#ef4444",
 }
 
 CUSTOM_CSS = """
@@ -70,18 +73,17 @@ CUSTOM_CSS = """
 </style>
 """
 
-COMPONENT_HELP = {
-    "rs_market": "Relative strength vs SPY over 63d and 126d. Higher = outperforming the market.",
-    "rs_sector": "Relative strength vs sector ETF peers. Ranked within sector group.",
-    "accumulation": "Up-day volume divided by down-day volume (20d). Above 1 = buying pressure.",
-    "relative_volume": "Today's or 3-day avg volume vs 20-day average. Surges signal demand.",
-    "compression": (
-        "Bollinger Band width percentile (120d). "
-        "Low = volatility squeeze before breakout."
-    ),
-    "pattern": "Five-point base quality checklist near 52-week highs.",
-    "resistance": "Distance to 50/65-day high resistance. Closer = nearer breakout.",
-    "revenue": "Year-over-year quarterly revenue growth.",
-    "eps": "Blended recent EPS growth and 3-year CAGR.",
-}
 
+def tier_badge_styles(config) -> dict[str, str]:
+    colors = {**DEFAULT_TIER_COLORS, **config.tier_colors}
+    css = {}
+    for tier, hex_color in colors.items():
+        if tier == "filtered":
+            css[tier] = "background:#fee2e2;color:#991b1b;"
+        elif tier in ("Tier 1", "A"):
+            css[tier] = "background:#dcfce7;color:#166534;"
+        elif tier in ("Tier 2", "B"):
+            css[tier] = "background:#fef9c3;color:#854d0e;"
+        else:
+            css[tier] = "background:#f1f5f9;color:#475569;"
+    return css

@@ -7,42 +7,47 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from quant_platform.filters.eligibility import FILTER_LABELS
-from quant_platform.viz.components import (
+from quant_platform.viz.shared.components import (
     apply_chart_style,
     render_ticker_news_panel,
     tier_badge_html,
 )
-from quant_platform.viz.data import scores_to_dataframe
-from quant_platform.viz.navigation import set_detail_ticker, ticker_link_html
-
-SORT_OPTIONS = {
-    "Final Score": "final_score",
-    "RS vs Market": "RS vs Market",
-    "Compression": "Compression",
-    "Revenue YoY %": "revenue_yoy_pct",
-    "EPS Growth %": "eps_growth_pct",
-    "Technical Score": "tech_score",
-    "Fundamental Score": "fund_score",
-}
+from quant_platform.viz.shared.navigation import set_detail_ticker, ticker_link_html
+from quant_platform.viz.strategy.registry import VizStrategyConfig
+from quant_platform.viz.strategy.reports import scores_to_dataframe
 
 
-def render_universe_summary(full_df: pd.DataFrame) -> None:
+def _sort_options(config: VizStrategyConfig) -> dict[str, str]:
+    options = {"Final Score": "final_score", "Normalized": "normalized_score"}
+    for key, label in config.score_labels.items():
+        options[label] = label
+    if config.id == "breakout":
+        options["Revenue YoY %"] = "revenue_yoy_pct"
+        options["EPS Growth %"] = "eps_growth_pct"
+        options["Technical Score"] = "tech_score"
+        options["Fundamental Score"] = "fund_score"
+    return options
+
+
+def render_universe_summary(full_df: pd.DataFrame, config: VizStrategyConfig) -> None:
     tiers = full_df["tier"].value_counts()
     eligible = int(full_df["eligible"].sum())
-    cols = st.columns(5)
+    cols = st.columns(min(5, 2 + len(config.tiers)))
     cols[0].metric("Universe", len(full_df))
     cols[1].metric("Eligible", eligible)
-    cols[2].metric("Tier 1", int(tiers.get("Tier 1", 0)))
-    cols[3].metric("Tier 2", int(tiers.get("Tier 2", 0)))
+    for i, tier in enumerate(config.tiers):
+        cols[2 + i].metric(tier, int(tiers.get(tier, 0)))
+    avg_col = cols[-1]
     avg = full_df.loc[full_df["eligible"], "final_score"].mean()
-    cols[4].metric("Avg Score (eligible)", f"{avg:.1f}" if eligible else "—")
+    avg_col.metric("Avg Score (eligible)", f"{avg:.1f}" if eligible else "—")
 
 
-def apply_universe_controls(full_df: pd.DataFrame) -> pd.DataFrame:
+def apply_universe_controls(full_df: pd.DataFrame, config: VizStrategyConfig) -> pd.DataFrame:
     st.markdown("##### Explore the universe")
+    sort_options = _sort_options(config)
     c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
-    sort_label = c1.selectbox("Sort by", list(SORT_OPTIONS.keys()), key="universe_sort")
-    sort_col = SORT_OPTIONS[sort_label]
+    sort_label = c1.selectbox("Sort by", list(sort_options.keys()), key="universe_sort")
+    sort_col = sort_options[sort_label]
     ascending = c2.toggle("Ascending", value=False, key="universe_sort_asc")
 
     sectors = sorted(full_df["sector_etf"].dropna().unique().tolist())
@@ -56,15 +61,15 @@ def apply_universe_controls(full_df: pd.DataFrame) -> pd.DataFrame:
     if view_mode == "Eligible":
         result = result[result["eligible"]]
     elif view_mode == "Actionable":
-        result = result[result["tier"].isin(["Tier 1", "Tier 2"])]
+        result = result[result["tier"].isin(config.actionable_tiers)]
 
     if sort_col in result.columns:
         result = result.sort_values(sort_col, ascending=ascending, na_position="last")
     return result
 
 
-def _mini_score_chart(ticker_data: dict, ticker: str) -> go.Figure | None:
-    score_df = scores_to_dataframe(ticker_data)
+def _mini_score_chart(ticker_data: dict, ticker: str, config: VizStrategyConfig) -> go.Figure | None:
+    score_df = scores_to_dataframe(ticker_data, config)
     if score_df.empty:
         return None
     top = score_df.nlargest(6, "score")
@@ -87,10 +92,15 @@ def _mini_score_chart(ticker_data: dict, ticker: str) -> go.Figure | None:
     return apply_chart_style(fig)
 
 
-def render_universe_detail_panel(ticker: str, ticker_data: dict) -> None:
+def render_universe_detail_panel(
+    ticker: str,
+    ticker_data: dict,
+    config: VizStrategyConfig,
+) -> None:
     summary = ticker_data.get("summary") or {}
     st.markdown(
-        f"### {ticker_link_html(ticker)} {tier_badge_html(ticker_data.get('tier', 'filtered'))}",
+        f"### {ticker_link_html(ticker)} "
+        f"{tier_badge_html(ticker_data.get('tier', 'filtered'), config)}",
         unsafe_allow_html=True,
     )
 
@@ -106,7 +116,7 @@ def render_universe_detail_panel(ticker: str, ticker_data: dict) -> None:
     elif fail_reason:
         st.warning(FILTER_LABELS.get(fail_reason, fail_reason))
 
-    fig = _mini_score_chart(ticker_data, ticker)
+    fig = _mini_score_chart(ticker_data, ticker, config)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
 
@@ -132,15 +142,14 @@ def universe_table_column_config() -> dict:
         "fund_score": st.column_config.NumberColumn("Fundamental", format="%.0f"),
         "revenue_yoy_pct": st.column_config.NumberColumn("Rev YoY %", format="%.1f"),
         "eps_growth_pct": st.column_config.NumberColumn("EPS Gr %", format="%.1f"),
-        "RS vs Market": st.column_config.NumberColumn("RS Mkt", format="%.0f"),
-        "Compression": st.column_config.NumberColumn("Compress", format="%.0f"),
         "top_signal": st.column_config.TextColumn("Top Signal", width="medium"),
         "tier_reason": st.column_config.TextColumn("Tier Note", width="large"),
         "filter_label": st.column_config.TextColumn("Exclusion", width="medium"),
+        "filter_reason": st.column_config.TextColumn("Filter", width="medium"),
     }
 
 
-def universe_display_columns(table_df: pd.DataFrame) -> list[str]:
+def universe_display_columns(table_df: pd.DataFrame, config: VizStrategyConfig) -> list[str]:
     preferred = [
         "ticker",
         "tier",
@@ -151,14 +160,11 @@ def universe_display_columns(table_df: pd.DataFrame) -> list[str]:
         "tech_score",
         "fund_score",
         "sector_etf",
-        "RS vs Market",
-        "Compression",
-        "Accumulation",
-        "Revenue",
-        "EPS",
+        *config.score_labels.values(),
         "revenue_yoy_pct",
         "eps_growth_pct",
         "tier_reason",
         "filter_label",
+        "filter_reason",
     ]
     return [column for column in preferred if column in table_df.columns]

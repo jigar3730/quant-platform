@@ -24,6 +24,7 @@ quant-platform/
 | Command | Module | Purpose |
 |---------|--------|---------|
 | `quant-scan` | `cli.py` | Breakout scanner |
+| `quant-swing` | `swing/cli.py` | Swing pullback scanner |
 | `quant-lynch` | `lynch/cli.py` | Peter Lynch scanner |
 | `quant-daily` | `daily.py` | Scheduled breakout scan + archive + email |
 | `quant-view` | `view.py` | Launches Streamlit dashboard |
@@ -42,7 +43,7 @@ All scanners share universe resolution via `data/tickers.py` (CLI → `data/tick
 | `cli.py` | `quant-scan` argument parsing and runner invocation |
 | `daily.py` | `quant-daily` scheduled workflow |
 | `view.py` | Subprocess launcher for Streamlit |
-| `dashboard.py` | Streamlit app shell (tabs, report loading) |
+| `dashboard.py` | Streamlit app entry (strategy selector, tab dispatch) |
 | `logging_setup.py` | Shared logging config for all CLIs |
 | `indicators.py` | SMA, returns, swing lows, 52-week range helpers |
 
@@ -89,7 +90,38 @@ All scanners share universe resolution via `data/tickers.py` (CLI → `data/tick
 | `diagnostics.py` | Human-readable score explanations |
 | `export.py` | Write JSON and Markdown files |
 
-### `pipeline/` — breakout orchestration
+### `engine/` — shared scan engine
+
+| File | Role |
+|------|------|
+| `runner.py` | StrategyEngine: fetch → filter → score all → tier → export |
+| `export.py` | Legacy JSON score shapes for reports |
+| `types.py`, `context.py`, `protocols.py`, `dispatch.py` | Ticker results, scan context, StrategySpec protocol |
+
+Breakout and swing use `StrategyEngine` via their runners. Lynch remains a separate pipeline.
+
+### `strategies/` — strategy specs (engine)
+
+| Path | Role |
+|------|------|
+| `registry.py` | `get_strategy(id)` — breakout, swing, lynch, fake |
+| `breakout/` | Breakout filters, aggregate, tiers |
+| `swing/` | Swing filters, aggregate, tier assignment (A/B/C) |
+| `lynch/spec.py` | Lynch StrategySpec wrapper |
+| `fake/spec.py` | Test/dry-run strategy |
+
+### `factors/` — reusable scoring factors
+
+Used by swing (and engine-based strategies): `swing.py`, `relative_strength.py`, `volume.py`, etc.
+
+### `swing/` — swing CLI and runner
+
+| File | Role |
+|------|------|
+| `cli.py` | `quant-swing` argument parsing |
+| `runner.py` | SwingScannerRunner → StrategyEngine + archive |
+
+### `pipeline/` — breakout orchestration (legacy path)
 
 | File | Role |
 |------|------|
@@ -124,21 +156,33 @@ All scanners share universe resolution via `data/tickers.py` (CLI → `data/tick
 
 ### `viz/` — Streamlit dashboard
 
+Registry-driven UI: one sidebar **Strategy** selector; Breakout and Swing share price-scanner pages; Lynch has its own page set.
+
 | File / dir | Role |
 |------------|------|
-| `dashboard.py` | *(parent)* Tab routing and report loading |
-| `sidebar.py` | Report pickers, filters, ticker picker |
-| `pages/breakout.py` | Breakout tab renderers (overview, universe, watchlist, compare) |
-| `universe_panel.py` | Interactive Full Universe table + detail panel |
-| `components.py` | Charts, ticker detail, news panel |
-| `data.py` | Load JSON reports → DataFrames |
-| `breakout_filters.py` | Sidebar filter application |
-| `lynch_data.py` | Lynch report loaders |
-| `lynch_components.py` | Peter Lynch tab UI |
-| `navigation.py` | `?ticker=` URL query param bridge |
-| `styles.py` | CSS and chart layout defaults |
-| `display.py` | Arrow-safe value formatting for tables |
-| `validation.py` | Detect synthetic / dry-run SPY data |
+| `dashboard.py` | *(package root)* Streamlit entry — loads report, dispatches by `page_set` |
+| `sidebar.py` | `render_strategy_sidebar()` — strategy, report, filters, DuckDB sync |
+| `strategy/registry.py` | `VizStrategyConfig` — tiers, score labels, paths, scatter defaults |
+| `strategy/reports.py` | `list_report_paths`, `load_scan_report`, `report_to_dataframe` |
+| `strategy/filters.py` | `ScanFilters`, `apply_filters`, `scatter_dataframe` |
+| `strategy/lynch_reports.py` | Lynch DataFrame helpers |
+| `pages/price_scanner.py` | Full Universe, Overview, Ticker Detail, Watchlist, Compare |
+| `pages/lynch.py` | Lynch sub-tabs (Overview, Candidates, All Tickers, Detail) |
+| `shared/components.py` | Charts, ticker detail, news (config-aware) |
+| `shared/universe_panel.py` | Interactive universe table + preview panel |
+| `shared/styles.py` | CSS, Plotly layout, tier badge colors |
+| `shared/navigation.py` | `?ticker=` URL query param bridge |
+| `shared/display.py` | Arrow-safe value formatting |
+| `shared/validation.py` | Detect synthetic / dry-run SPY data |
+
+```
+dashboard.py
+    ├── sidebar.render_strategy_sidebar()  → VizStrategyConfig, report path, ScanFilters
+    ├── strategy/reports.load_scan_report()
+    └── page_set == "price"  → pages/price_scanner.py
+        page_set == "lynch"   → pages/lynch.py
+              └── shared/components.py, universe_panel.py
+```
 
 ---
 
@@ -169,19 +213,20 @@ All scanners share universe resolution via `data/tickers.py` (CLI → `data/tick
 | Scanner | Latest (`data/output/`) | Archive (`data/history/YYYY-MM-DD/`) |
 |---------|-------------------------|--------------------------------------|
 | Breakout | `breakout_scan_results.csv`, `breakout_scan_report.json`, `breakout_scan_summary.md` | Same filenames + `scan.log`, `scan_summary.txt` |
+| Swing | `swing_scan_results.csv`, `swing_scan_report.json`, `swing_scan_summary.md` | Same filenames + `swing_scan.log`, `swing_scan_summary.txt` |
 | Lynch | `lynch_scan_results.csv`, `lynch_scan_report.json`, `lynch_scan_summary.md` | Same filenames + `lynch_scan.log`, `lynch_scan_summary.txt` |
 
 **Flow:**
 
 ```
-quant-scan / quant-lynch
+quant-scan / quant-swing / quant-lynch
         │
         ▼
   data/output/          ← always updated (latest only)
         │
         │  --archive
         ▼
-  data/history/YYYY-MM-DD/  +  scan_history.duckdb
+  data/history/YYYY-MM-DD/  +  scan_history.duckdb (strategy_id key)
 ```
 
 ---
@@ -191,6 +236,7 @@ quant-scan / quant-lynch
 | File | Written by |
 |------|------------|
 | `scan.log` | `quant-scan`, `quant-daily` |
+| `swing_scan.log` | `quant-swing` |
 | `lynch_scan.log` | `quant-lynch` |
 
 Archived copies land in `data/history/YYYY-MM-DD/` when using `--archive`.
@@ -227,29 +273,35 @@ Run: `pytest` (unit only by default) · `pytest -m integration` (network)
 
 ```
                     ┌─────────────┐
-                    │  quant-view │  Streamlit dashboard
+                    │  quant-view │  Streamlit (strategy registry)
                     └──────┬──────┘
                            │
           ┌────────────────┼────────────────┐
           ▼                ▼                ▼
-   ┌─────────────┐  ┌─────────────┐  ┌──────────┐
-   │ quant-scan  │  │ quant-lynch │  │quant-daily│
-   └──────┬──────┘  └──────┬──────┘  └────┬─────┘
-          │                │               │
-          ▼                ▼               ▼
-   pipeline/runner   lynch/runner    pipeline/runner
-          │                │               │
-          └────────┬───────┴───────────────┘
+   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+   │ quant-scan  │  │ quant-swing │  │ quant-lynch │
+   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+          │                │                │
+          ▼                ▼                ▼
+   pipeline/runner   swing/runner     lynch/runner
+          │                │                │
+          ▼                ▼                │
+   (legacy path)    engine/runner ◄─────────┘ (Lynch separate)
+          │                │
+          └────────┬───────┘
                    ▼
-            data/ + scoring/ + filters/
+            strategies/ + factors/
                    │
                    ▼
             history/ + notify/
+                   │
+                   ▼
+              viz/strategy/  ← dashboard reads JSON reports
 ```
 
-**Shared:** `config.py`, `data/tickers.py`, `data/fetch.py`, `logging_setup.py`, `history/duckdb_store.py`
+**Shared:** `config.py`, `data/tickers.py`, `data/fetch.py`, `logging_setup.py`, `history/duckdb_store.py`, `engine/` (breakout + swing)
 
-**Separate:** Lynch and breakout each have their own runner, CLI, archive module, and viz tab — same patterns, not yet unified into one framework.
+**Dashboard:** `viz/strategy/registry.py` mirrors engine tiers/scores for display only; JSON reports remain source of truth.
 
 ---
 

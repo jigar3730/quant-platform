@@ -1,21 +1,20 @@
 # quant-platform
 
-A quantitative stock scanning pipeline that identifies high-quality breakout candidates from actively traded US equities. The scanner fetches market data via yfinance, applies eligibility filters, scores technical and fundamental signals, adjusts for SPY market regime, and exports ranked results.
+A quantitative stock scanning pipeline for US equities. It includes **breakout**, **swing pullback**, and **Peter Lynch** strategies that fetch market data via yfinance, apply eligibility filters, score technical and fundamental signals, adjust for SPY market regime, and export ranked results.
 
 ## Features
 
-- Scans the 250 most-active US stocks by default (or a custom ticker list)
-- Hard filters for liquidity, trend alignment, price, and 52-week range
-- Nine scoring components: relative strength, volume, compression, pattern, resistance, revenue, EPS
-- SPY market regime multiplier (strong / neutral / weak)
-- Tier assignment: Tier 1 (breakout ready), Tier 2 (watchlist), Tier 3, filtered
-- CSV summary output for spreadsheets
-- Optional JSON and Markdown reports with per-indicator explanations
+- **Breakout scanner** (`quant-scan`) — compression, relative strength, volume, and growth signals
+- **Swing pullback scanner** (`quant-swing`) — weekly trend, pullback quality, and volume behavior
 - **Peter Lynch scanner** (`quant-lynch`) — PEG, growth, debt, neglect, and category presets
-- Interactive Streamlit dashboard with charts, full-universe table, and ticker profiles
+- Scans the most-active US stocks by default (or a custom ticker list in `data/tickers.txt`)
+- Hard filters for liquidity, trend alignment, price, and range; **all tickers with price data are scored** (filters label exclusions; tiers apply to eligible names only)
+- SPY market regime multiplier (strong / neutral / weak)
+- CSV summary output for spreadsheets; optional JSON and Markdown reports
+- **Strategy-aware Streamlit dashboard** (`quant-view`) — Breakout, Swing, and Lynch via sidebar selector
 - Live news and market snapshots per ticker (Yahoo Finance)
-- Daily JSON archival (`data/history/YYYY-MM-DD/`) plus DuckDB score history
-- Email alerts for actionable tickers (Tier 1 and Tier 2)
+- Daily JSON archival (`data/history/YYYY-MM-DD/`) plus DuckDB score history (composite key per strategy)
+- Email alerts for actionable breakout tickers (Tier 1 and Tier 2)
 - Docker deployment with 5 PM scheduled scans
 
 ## Requirements
@@ -61,7 +60,7 @@ quant-daily --no-email
 
 ## Static ticker universe
 
-Edit `data/tickers.txt` to define a shared watchlist for **all scanners** (`quant-scan`, `quant-lynch`, `quant-daily`). One symbol per line; lines starting with `#` are comments.
+Edit `data/tickers.txt` to define a shared watchlist for **all scanners** (`quant-scan`, `quant-swing`, `quant-lynch`, `quant-daily`). One symbol per line; lines starting with `#` are comments.
 
 ```text
 # VSMAX small-cap holdings (update manually)
@@ -132,27 +131,49 @@ quant-lynch --report both --archive          # scan + history + DuckDB
 
 Outputs: `data/output/lynch_scan_results.csv`, optional JSON/MD reports.
 
-### `quant-view`
+### `quant-swing` — Swing pullback scanner
 
-Requires `[viz]`. Loads breakout and Lynch reports from `data/output/` or archived days in the sidebar.
+| Flag | Description |
+|------|-------------|
+| `--tickers AAPL,MSFT` | Override ticker config file and dynamic fetch |
+| `--tickers-file PATH` | Static ticker list (default: `data/tickers.txt`) |
+| `--dynamic-universe` | Ignore ticker config; use Yahoo most-actives |
+| `--report {json,md,both}` | Detailed swing report |
+| `--archive` | Archive to `data/history/YYYY-MM-DD/` and upsert DuckDB |
 
 ```bash
-quant-scan --report both
+quant-swing --report both
+quant-swing --report both --archive    # scan + history + DuckDB
+quant-swing --tickers NVDA,AMD --cache
+```
+
+Outputs: `data/output/swing_scan_results.csv`, optional JSON/MD reports. Tiers: **A** (≥80), **B** (65–79), **C** (below 65), **filtered** (failed eligibility).
+
+### `quant-view`
+
+Requires `[viz]`. Pick a **strategy** in the sidebar (Breakout, Swing Pullback, or Peter Lynch), then load the latest or an archived report.
+
+```bash
+quant-scan --report both --archive    # Breakout
+quant-swing --report both --archive   # Swing pullback
+quant-lynch --report both --archive   # Peter Lynch
 quant-view
 ```
 
 ## Dashboard overview
 
-| Tab | Purpose |
-|-----|---------|
+Use the sidebar **Strategy** selector to switch between scan types. **Breakout** and **Swing Pullback** share the same tab layout; **Peter Lynch** has its own sub-tabs.
+
+| Tab / view | Purpose |
+|------------|---------|
 | **Full Universe** | Interactive scan table, filters, sort, and live ticker preview panel |
 | **Overview** | Market regime, tier chart, exclusion breakdown, score distribution, heatmap, scatter |
 | **Ticker Detail** | Fundamentals, technical scores, eligibility, live news, score history |
-| **Actionable Watchlist** | Tier 1 and Tier 2 candidates with profile links |
+| **Actionable Watchlist** | Top-tier candidates (Tier 1+2 for breakout; A+B for swing) |
 | **Compare** | Side-by-side radar chart for 2–3 tickers |
-| **Peter Lynch** | Lynch scan overview, candidates, checks, metrics, and archived history |
+| **Peter Lynch** | Overview, candidates, full universe, ticker detail (when Lynch strategy selected) |
 
-Blue ticker links (`?ticker=MU`) open the unified profile from anywhere in the app. Sidebar picker and filters apply across tabs.
+Blue ticker links (`?ticker=MU`) open the unified profile from anywhere in the app. Sidebar picker and filters apply across tabs for price-scanner strategies.
 
 ## Output files
 
@@ -160,14 +181,17 @@ Blue ticker links (`?ticker=MU`) open the unified profile from anywhere in the a
 |------|-------------|
 | `data/tickers.txt` | Shared static universe for all scanners (edit manually) |
 | `data/output/breakout_scan_results.csv` | Ranked summary table |
-| `data/output/breakout_scan_report.json` | Full per-ticker analysis (dashboard input) |
-| `data/output/breakout_scan_summary.md` | Human-readable summary |
+| `data/output/breakout_scan_report.json` | Full per-ticker breakout analysis (dashboard input) |
+| `data/output/breakout_scan_summary.md` | Human-readable breakout summary |
+| `data/output/swing_scan_results.csv` | Swing pullback ranked table |
+| `data/output/swing_scan_report.json` | Full per-ticker swing analysis (dashboard input) |
+| `data/output/swing_scan_summary.md` | Human-readable swing summary |
 | `data/output/lynch_scan_results.csv` | Peter Lynch screen results |
 | `data/output/lynch_scan_report.json` | Lynch scan detail (with `--report`) |
-| `data/history/YYYY-MM-DD/` | Daily archive (breakout and/or Lynch CSV, JSON, MD, log, summary) |
+| `data/history/YYYY-MM-DD/` | Daily archive (breakout, swing, and/or Lynch CSV, JSON, MD, log, summary) |
 | `data/history/scan_index.csv` | Index of archived breakout scans |
 | `data/history/lynch_scan_index.csv` | Index of archived Lynch scans |
-| `data/scan_history.duckdb` | Per-ticker score history for breakout and Lynch (upserted on `--archive`) |
+| `data/scan_history.duckdb` | Per-ticker score history for breakout, swing, and Lynch (`strategy_id` key) |
 | `logs/scan.log` | Runtime log |
 
 **Note:** Without `--archive`, only `data/output/` is updated (latest scan overwrites previous). JSON per day is stored only when archiving is enabled.
@@ -182,12 +206,23 @@ docker compose run --rm scanner scan   # optional: run now
 
 ## Interpreting results
 
+### Breakout tiers
+
 | Tier | Meaning |
 |------|---------|
 | Tier 1 | Breakout ready — high score with compression and volume confirmation |
 | Tier 2 | Watchlist — score 65–79, or high score missing Tier 1 criteria |
 | Tier 3 | Below watchlist threshold (score under 65) |
-| filtered | Failed eligibility (trend, liquidity, price, etc.) |
+| filtered | Failed eligibility (trend, liquidity, price, etc.) — may still show component scores in JSON/dashboard |
+
+### Swing tiers
+
+| Tier | Meaning |
+|------|---------|
+| A | Strong pullback setup (final score ≥ 80) |
+| B | Watchlist (final score 65–79) |
+| C | Eligible but lower score |
+| filtered | Failed swing eligibility filters |
 
 Sort by `final_adjusted_score` descending. See **[USER_MANUAL.md](USER_MANUAL.md)** for scoring formulas, dashboard usage, history, and troubleshooting.
 

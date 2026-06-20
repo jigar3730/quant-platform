@@ -1,4 +1,4 @@
-"""Reusable dashboard UI components."""
+"""Reusable dashboard UI components — strategy-aware via VizStrategyConfig."""
 
 from __future__ import annotations
 
@@ -9,16 +9,11 @@ import streamlit as st
 
 from quant_platform.data.news import fetch_ticker_news, fetch_ticker_snapshot
 from quant_platform.filters.eligibility import FILTER_LABELS
-from quant_platform.viz.data import (
-    FUNDAMENTAL_KEYS,
-    SCORE_LABELS,
-    TECHNICAL_KEYS,
-    TIER_COLORS,
-    scores_to_dataframe,
-)
-from quant_platform.viz.navigation import ticker_link_html
-from quant_platform.viz.styles import COMPONENT_HELP, PLOTLY_LAYOUT, TIER_BADGE_CSS
-from quant_platform.viz.validation import regime_looks_synthetic
+from quant_platform.viz.shared.navigation import ticker_link_html
+from quant_platform.viz.shared.styles import DEFAULT_TIER_COLORS, PLOTLY_LAYOUT, tier_badge_styles
+from quant_platform.viz.shared.validation import regime_looks_synthetic
+from quant_platform.viz.strategy.registry import VizStrategyConfig
+from quant_platform.viz.strategy.reports import scores_to_dataframe
 
 
 def apply_chart_style(fig: go.Figure, *, height: int | None = None) -> go.Figure:
@@ -28,22 +23,34 @@ def apply_chart_style(fig: go.Figure, *, height: int | None = None) -> go.Figure
     return fig
 
 
-def tier_badge_html(tier: str) -> str:
-    style = TIER_BADGE_CSS.get(tier, TIER_BADGE_CSS["Tier 3"])
+def tier_color_map(config: VizStrategyConfig) -> dict[str, str]:
+    return {**DEFAULT_TIER_COLORS, **config.tier_colors}
+
+
+def tier_badge_html(tier: str, config: VizStrategyConfig) -> str:
+    styles = tier_badge_styles(config)
+    style = styles.get(tier, styles.get("filtered", "background:#f1f5f9;color:#475569;"))
     return f"<span class='tier-badge' style='{style}'>{tier}</span>"
 
 
-def render_scan_header(report_path: str, summary: dict, regime: dict) -> None:
+def render_scan_header(
+    config: VizStrategyConfig,
+    report_path: str,
+    summary: dict,
+    regime: dict,
+) -> None:
     tiers = summary["tier_counts"]
+    tier_parts = " &nbsp;|&nbsp; ".join(
+        f"{tiers.get(label, 0)} {label}" for label in config.tiers
+    )
     st.markdown(
         f"""
         <div class="scan-header">
-            <h1>Breakout Scanner</h1>
+            <h1>{config.label} Scanner</h1>
             <p>
               {summary['universe_size']} tickers scanned
               &nbsp;|&nbsp; {summary['eligible_count']} eligible
-              &nbsp;|&nbsp; {tiers['Tier 1']} Tier 1
-              &nbsp;|&nbsp; {tiers['Tier 2']} Tier 2
+              &nbsp;|&nbsp; {tier_parts}
               &nbsp;|&nbsp; Regime: <strong>{regime['label'].title()}</strong>
               (×{regime['multiplier']})
             </p>
@@ -75,10 +82,10 @@ def render_regime_panel(regime: dict) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def render_tier_chart(tiers: dict) -> go.Figure:
-    labels = ["Tier 1", "Tier 2", "Tier 3", "filtered"]
+def render_tier_chart(tiers: dict, config: VizStrategyConfig) -> go.Figure:
+    labels = [*config.tiers, "filtered"]
     values = [tiers.get(label, 0) for label in labels]
-    colors = [TIER_COLORS[label] for label in labels]
+    colors = [tier_color_map(config).get(label, "#94a3b8") for label in labels]
     fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.45, marker_colors=colors))
     fig.update_layout(title="Tier Distribution", showlegend=True, height=320)
     return apply_chart_style(fig)
@@ -130,24 +137,27 @@ def render_heatmap(heat_df: pd.DataFrame) -> go.Figure:
     return apply_chart_style(fig)
 
 
-def render_scatter(scatter_df: pd.DataFrame) -> go.Figure:
+def render_scatter(scatter_df: pd.DataFrame, config: VizStrategyConfig) -> go.Figure:
+    x_key, y_key = config.scatter_defaults
+    x_label = config.score_labels.get(x_key, x_key.replace("_", " ").title())
+    y_label = config.score_labels.get(y_key, y_key.replace("_", " ").title())
     fig = px.scatter(
         scatter_df,
-        x="compression",
-        y="rs_market",
+        x=x_key,
+        y=y_key,
         text="ticker",
         size="final_score",
         color="tier",
-        color_discrete_map=TIER_COLORS,
+        color_discrete_map=tier_color_map(config),
         hover_data=["final_score", "tier"],
         labels={
-            "compression": "Compression Score",
-            "rs_market": "RS vs Market Score",
+            x_key: f"{x_label} Score",
+            y_key: f"{y_label} Score",
             "final_score": "Final Score",
         },
     )
     fig.update_traces(textposition="top center", marker=dict(line=dict(width=1, color="white")))
-    fig.update_layout(title="Compression vs Relative Strength")
+    fig.update_layout(title=f"{x_label} vs {y_label}")
     return apply_chart_style(fig, height=400)
 
 
@@ -188,17 +198,17 @@ def render_radar(scores_df: pd.DataFrame, ticker: str) -> go.Figure:
     return apply_chart_style(fig)
 
 
-def render_compare_radar(ticker_list: list[dict]) -> go.Figure | None:
+def render_compare_radar(ticker_list: list[dict], config: VizStrategyConfig) -> go.Figure | None:
     fig = go.Figure()
     palette = ["#3b82f6", "#f59e0b", "#10b981"]
     for i, t in enumerate(ticker_list):
-        scores_df = scores_to_dataframe(t)
-        if scores_df.empty:
+        comp_df = scores_to_dataframe(t, config)
+        if comp_df.empty:
             continue
         fig.add_trace(
             go.Scatterpolar(
-                r=scores_df["pct"].tolist(),
-                theta=scores_df["component"].tolist(),
+                r=comp_df["pct"].tolist(),
+                theta=comp_df["component"].tolist(),
                 fill="toself",
                 name=t["ticker"],
                 opacity=0.6,
@@ -224,10 +234,7 @@ def render_eligibility_panel(ticker_data: dict) -> None:
 
     for check in checks:
         passed = check.get("passed")
-        if passed:
-            badge = "<span class='pass-badge'>PASS</span>"
-        else:
-            badge = "<span class='fail-badge'>FAIL</span>"
+        badge = "<span class='pass-badge'>PASS</span>" if passed else "<span class='fail-badge'>FAIL</span>"
         rule = check.get("rule", "").replace("_", " ").title()
         value = check.get("value")
         threshold = check.get("threshold", "")
@@ -247,9 +254,14 @@ def render_eligibility_panel(ticker_data: dict) -> None:
             cols[1].markdown(body)
 
 
-def _render_score_cards(ticker_data: dict, keys: tuple[str, ...], title: str) -> None:
+def _render_score_cards(
+    ticker_data: dict,
+    config: VizStrategyConfig,
+    keys: tuple[str, ...],
+    title: str,
+) -> None:
     scores = ticker_data.get("scores") or {}
-    subset = [(k, SCORE_LABELS[k]) for k in keys if k in SCORE_LABELS]
+    subset = [(k, config.score_labels[k]) for k in keys if k in config.score_labels]
     if not subset:
         return
 
@@ -261,7 +273,7 @@ def _render_score_cards(ticker_data: dict, keys: tuple[str, ...], title: str) ->
         score = float(comp.get("score", 0))
         max_pts = comp.get("max", 0)
         pct = (score / max_pts * 100) if max_pts else 0
-        help_text = COMPONENT_HELP.get(key, "")
+        help_text = config.component_help.get(key, "")
         st.markdown(
             f"""
             <div class="component-card">
@@ -284,12 +296,33 @@ def _render_score_cards(ticker_data: dict, keys: tuple[str, ...], title: str) ->
                 st.json(raw)
 
 
-def render_component_cards(ticker_data: dict) -> None:
+def render_fundamentals_panel(ticker_data: dict, config: VizStrategyConfig) -> None:
     scores = ticker_data.get("scores") or {}
-    if not scores:
-        st.warning("No scoring data — stock did not pass eligibility filters.")
+    if not config.fundamental_keys:
+        st.info("No fundamental score components for this strategy.")
         return
-    _render_score_cards(ticker_data, tuple(SCORE_LABELS.keys()), "Scoring Components")
+    if not any(scores.get(k) for k in config.fundamental_keys):
+        st.info("Fundamental scores unavailable for this ticker.")
+        return
+    _render_score_cards(ticker_data, config, config.fundamental_keys, "Fundamentals")
+
+
+def render_technical_panel(
+    ticker_data: dict,
+    ticker: str,
+    config: VizStrategyConfig,
+) -> None:
+    scores = ticker_data.get("scores") or {}
+    if not any(scores.get(k) for k in config.technical_keys):
+        st.info("Technical scores unavailable for this ticker.")
+        return
+
+    technical_df = scores_to_dataframe(ticker_data, config)
+    technical_df = technical_df[technical_df["key"].isin(config.technical_keys)]
+    if not technical_df.empty:
+        st.plotly_chart(render_score_bars(technical_df, ticker), use_container_width=True)
+        st.plotly_chart(render_radar(technical_df, ticker), use_container_width=True)
+    _render_score_cards(ticker_data, config, config.technical_keys, "Technical Scores")
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -395,42 +428,27 @@ def render_score_history(history: list[dict], ticker: str) -> go.Figure | None:
     return apply_chart_style(fig)
 
 
-def render_fundamentals_panel(ticker_data: dict) -> None:
-    scores = ticker_data.get("scores") or {}
-    if not any(scores.get(k) for k in FUNDAMENTAL_KEYS):
-        st.info("Fundamental scores unavailable — ticker did not pass eligibility filters.")
-        return
-    _render_score_cards(ticker_data, FUNDAMENTAL_KEYS, "Fundamentals")
-
-
-def render_technical_panel(ticker_data: dict, ticker: str) -> None:
-    scores = ticker_data.get("scores") or {}
-    if not any(scores.get(k) for k in TECHNICAL_KEYS):
-        st.info("Technical scores unavailable — ticker did not pass eligibility filters.")
-        return
-
-    technical_df = scores_to_dataframe(ticker_data)
-    technical_df = technical_df[technical_df["key"].isin(TECHNICAL_KEYS)]
-    if not technical_df.empty:
-        st.plotly_chart(render_score_bars(technical_df, ticker), use_container_width=True)
-        st.plotly_chart(render_radar(technical_df, ticker), use_container_width=True)
-    _render_score_cards(ticker_data, TECHNICAL_KEYS, "Technical Scores")
-
-
 def render_ticker_detail(
     ticker: str,
     ticker_data: dict,
+    config: VizStrategyConfig,
     *,
     compact_news: bool = False,
     show_history: bool = True,
 ) -> None:
-    """Unified detail: news, fundamentals, technical scores, eligibility, history."""
     tier = ticker_data.get("tier", "filtered")
+    eligible = ticker_data.get("eligible", False)
     st.markdown(
-        f"## {ticker_link_html(ticker)} {tier_badge_html(tier)}",
+        f"## {ticker_link_html(ticker)} {tier_badge_html(tier, config)}",
         unsafe_allow_html=True,
     )
-    st.info(ticker_data.get("tier_reason", ""))
+    if ticker_data.get("tier_reason"):
+        st.info(ticker_data["tier_reason"])
+    elif not eligible:
+        fail = ticker_data.get("eligibility", {}).get("fail_reason")
+        if fail:
+            label = FILTER_LABELS.get(fail, fail.replace("_", " ").title())
+            st.warning(f"Filtered: {label}")
 
     summary = ticker_data.get("summary", {})
     m1, m2, m3, m4 = st.columns(4)
@@ -441,10 +459,10 @@ def render_ticker_detail(
 
     render_ticker_news_panel(ticker, compact=compact_news)
 
-    if show_history:
+    if show_history and config.duckdb_strategy_id:
         from quant_platform.history.duckdb_store import get_ticker_history
 
-        history = get_ticker_history(ticker, strategy_id="breakout")
+        history = get_ticker_history(ticker, strategy_id=config.duckdb_strategy_id)
         if history:
             hist_fig = render_score_history(history, ticker)
             if hist_fig:
@@ -457,20 +475,11 @@ def render_ticker_detail(
 
     tab_fund, tab_tech, tab_elig = st.tabs(["Fundamentals", "Technical", "Eligibility"])
     with tab_fund:
-        render_fundamentals_panel(ticker_data)
+        render_fundamentals_panel(ticker_data, config)
     with tab_tech:
-        render_technical_panel(ticker_data, ticker)
+        render_technical_panel(ticker_data, ticker, config)
     with tab_elig:
         render_eligibility_panel(ticker_data)
-
-
-def build_leaderboard_df(df: pd.DataFrame) -> pd.DataFrame:
-    display = df.sort_values("final_score", ascending=False).copy()
-    display["score"] = display["final_score"].round(1)
-    display["norm"] = display["normalized_score"].round(1)
-    return display[
-        ["ticker", "tier", "score", "norm", "sector_etf", "tier_reason"]
-    ]
 
 
 def get_ticker_by_name(tickers: list[dict], name: str) -> dict | None:
@@ -481,27 +490,3 @@ def filter_reason_label(code: str | None) -> str:
     if not code:
         return ""
     return FILTER_LABELS.get(code, code.replace("_", " ").title())
-
-
-__all__ = [
-    "build_leaderboard_df",
-    "get_ticker_by_name",
-    "render_compare_radar",
-    "render_component_cards",
-    "render_eligibility_panel",
-    "render_exclusion_chart",
-    "render_fundamentals_panel",
-    "render_heatmap",
-    "render_radar",
-    "render_regime_panel",
-    "render_scan_header",
-    "render_scatter",
-    "render_score_bars",
-    "render_score_history",
-    "render_score_histogram",
-    "render_technical_panel",
-    "render_ticker_detail",
-    "render_ticker_news_panel",
-    "render_tier_chart",
-    "tier_badge_html",
-]

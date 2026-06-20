@@ -1,13 +1,11 @@
 import pandas as pd
 
-from quant_platform.viz.breakout_filters import (
-    BreakoutFilters,
-    apply_breakout_filters,
-    scatter_dataframe,
-)
+from quant_platform.viz.strategy.filters import ScanFilters, apply_filters, scatter_dataframe
+from quant_platform.viz.strategy.registry import get_viz_strategy
 
 
 def test_apply_breakout_filters():
+    config = get_viz_strategy("breakout")
     df = pd.DataFrame(
         [
             {"ticker": "AAA", "tier": "Tier 1", "eligible": True, "final_score": 80},
@@ -15,12 +13,13 @@ def test_apply_breakout_filters():
             {"ticker": "CCC", "tier": "filtered", "eligible": False, "final_score": 10},
         ]
     )
-    filters = BreakoutFilters(tier="Tier 1", eligible_only=True, min_score=70, search="AA")
-    result = apply_breakout_filters(df, filters)
+    filters = ScanFilters(tier="Tier 1", eligible_only=True, min_score=70, search="AA")
+    result = apply_filters(df, filters, config)
     assert list(result["ticker"]) == ["AAA"]
 
 
 def test_scatter_dataframe():
+    config = get_viz_strategy("breakout")
     tickers = [
         {
             "ticker": "AAA",
@@ -34,6 +33,6 @@ def test_scatter_dataframe():
         },
         {"ticker": "BBB", "eligible": False, "tier": "filtered"},
     ]
-    scatter = scatter_dataframe(tickers)
+    scatter = scatter_dataframe(tickers, config)
     assert len(scatter) == 1
     assert scatter.iloc[0]["ticker"] == "AAA"

@@ -1,9 +1,11 @@
 import pandas as pd
 
-from quant_platform.viz.data import full_universe_dataframe
+from quant_platform.viz.strategy.registry import get_viz_strategy
+from quant_platform.viz.strategy.reports import full_universe_dataframe
 
 
 def test_full_universe_dataframe_includes_scores():
+    config = get_viz_strategy("breakout")
     tickers = [
         {
             "ticker": "MU",
@@ -32,7 +34,7 @@ def test_full_universe_dataframe_includes_scores():
         },
     ]
 
-    df = full_universe_dataframe(tickers)
+    df = full_universe_dataframe(tickers, config)
     assert len(df) == 2
     mu = df[df["ticker"] == "MU"].iloc[0]
     assert mu["final_score"] == 64.0

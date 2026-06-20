@@ -1,4 +1,4 @@
-from quant_platform.viz.validation import regime_looks_synthetic
+from quant_platform.viz.shared.validation import regime_looks_synthetic
 
 
 def test_regime_looks_synthetic_detects_dry_run():

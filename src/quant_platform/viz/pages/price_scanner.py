@@ -1,16 +1,11 @@
-"""Breakout dashboard tab renderers."""
+"""Price-scanner dashboard tabs (breakout and swing)."""
 
 from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
 
-from quant_platform.viz.breakout_filters import (
-    BreakoutFilters,
-    apply_breakout_filters,
-    scatter_dataframe,
-)
-from quant_platform.viz.components import (
+from quant_platform.viz.shared.components import (
     get_ticker_by_name,
     render_compare_radar,
     render_exclusion_chart,
@@ -23,31 +18,52 @@ from quant_platform.viz.components import (
     render_tier_chart,
     tier_badge_html,
 )
-from quant_platform.viz.data import full_universe_dataframe, score_heatmap_dataframe
-from quant_platform.viz.navigation import set_detail_ticker, ticker_link_html
-from quant_platform.viz.universe_panel import (
+from quant_platform.viz.shared.navigation import set_detail_ticker, ticker_link_html
+from quant_platform.viz.shared.universe_panel import (
     apply_universe_controls,
     render_universe_detail_panel,
     render_universe_summary,
     universe_display_columns,
     universe_table_column_config,
 )
+from quant_platform.viz.strategy.filters import ScanFilters, apply_filters, scatter_dataframe
+from quant_platform.viz.strategy.registry import VizStrategyConfig
+from quant_platform.viz.strategy.reports import full_universe_dataframe, score_heatmap_dataframe
+
+
+def render_price_header(
+    *,
+    config: VizStrategyConfig,
+    report_path: str,
+    summary: dict,
+    regime: dict,
+    detail_ticker: str | None,
+) -> None:
+    render_scan_header(config, report_path, summary, regime)
+    if not detail_ticker:
+        return
+    link = ticker_link_html(detail_ticker)
+    st.markdown(
+        f'<div class="info-card">Viewing profile: <strong>{link}</strong> '
+        f"— open the <em>Ticker Detail</em> tab or click any ticker link.</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def render_overview_tab(
     *,
-    report_path: str,
+    config: VizStrategyConfig,
     summary: dict,
     regime: dict,
     df: pd.DataFrame,
     tickers: list[dict],
-    filters: BreakoutFilters,
+    filters: ScanFilters,
 ) -> None:
     render_regime_panel(regime)
 
     col_left, col_right = st.columns(2)
     with col_left:
-        st.plotly_chart(render_tier_chart(summary["tier_counts"]), use_container_width=True)
+        st.plotly_chart(render_tier_chart(summary["tier_counts"], config), use_container_width=True)
     with col_right:
         exclusion_fig = render_exclusion_chart(summary.get("filter_breakdown", {}))
         if exclusion_fig:
@@ -55,7 +71,7 @@ def render_overview_tab(
         else:
             st.success("All tickers in universe were evaluated for scoring.")
 
-    filtered_df = apply_breakout_filters(df, filters)
+    filtered_df = apply_filters(df, filters, config)
     eligible_df = filtered_df[filtered_df["eligible"]]
     if eligible_df.empty:
         return
@@ -67,27 +83,30 @@ def render_overview_tab(
         eligible_tickers = {row["ticker"] for _, row in eligible_df.iterrows()}
         heat_df = score_heatmap_dataframe(
             [t for t in tickers if t["ticker"] in eligible_tickers],
+            config,
             eligible_only=False,
         )
         if len(heat_df) > 1:
             st.plotly_chart(render_heatmap(heat_df), use_container_width=True)
 
     scatter_df = scatter_dataframe(
-        [t for t in tickers if t["ticker"] in set(eligible_df["ticker"])]
+        [t for t in tickers if t["ticker"] in set(eligible_df["ticker"])],
+        config,
     )
     if scatter_df.empty:
         return
 
     st.caption("Ticker labels are clickable — opens fundamentals, technical scores, and news.")
-    st.plotly_chart(render_scatter(scatter_df), use_container_width=True)
+    st.plotly_chart(render_scatter(scatter_df, config), use_container_width=True)
     links = " · ".join(ticker_link_html(symbol) for symbol in scatter_df["ticker"].head(20))
     st.markdown(links, unsafe_allow_html=True)
 
 
 def render_all_tickers_tab(
     *,
+    config: VizStrategyConfig,
     tickers: list[dict],
-    filters: BreakoutFilters,
+    filters: ScanFilters,
     detail_ticker: str | None,
 ) -> str | None:
     st.markdown("### Full Universe")
@@ -96,18 +115,18 @@ def render_all_tickers_tab(
         "or open the full ticker detail view."
     )
 
-    full_df = apply_breakout_filters(full_universe_dataframe(tickers), filters)
+    full_df = apply_filters(full_universe_dataframe(tickers, config), filters, config)
     if full_df.empty:
         st.warning("No tickers match the current filters.")
         return detail_ticker
 
-    render_universe_summary(full_df)
-    table_df = apply_universe_controls(full_df)
+    render_universe_summary(full_df, config)
+    table_df = apply_universe_controls(full_df, config)
     if table_df.empty:
         st.warning("No tickers match the selected view.")
         return detail_ticker
 
-    display_cols = universe_display_columns(table_df)
+    display_cols = universe_display_columns(table_df, config)
     shown_df = table_df[display_cols].copy()
 
     table_col, detail_col = st.columns([1.55, 1], gap="large")
@@ -124,7 +143,7 @@ def render_all_tickers_tab(
         st.download_button(
             "Download filtered CSV",
             table_df.to_csv(index=False).encode(),
-            file_name="breakout_scan_full.csv",
+            file_name=f"{config.id}_scan_full.csv",
             mime="text/csv",
         )
 
@@ -140,7 +159,7 @@ def render_all_tickers_tab(
         if active_ticker:
             ticker_data = get_ticker_by_name(tickers, active_ticker)
             if ticker_data:
-                render_universe_detail_panel(active_ticker, ticker_data)
+                render_universe_detail_panel(active_ticker, ticker_data, config)
             else:
                 st.info("Select a row to preview ticker details.")
         else:
@@ -151,6 +170,7 @@ def render_all_tickers_tab(
 
 def render_ticker_detail_tab(
     *,
+    config: VizStrategyConfig,
     tickers: list[dict],
     all_symbols: list[str],
     detail_ticker: str | None,
@@ -169,20 +189,22 @@ def render_ticker_detail_tab(
         set_detail_ticker(active)
     ticker_data = get_ticker_by_name(tickers, active)
     if ticker_data:
-        render_ticker_detail(active, ticker_data)
+        render_ticker_detail(active, ticker_data, config)
     else:
         st.warning(f"No data for {active}.")
 
 
 def render_watchlist_tab(
     *,
+    config: VizStrategyConfig,
     df: pd.DataFrame,
     tickers: list[dict],
-    filters: BreakoutFilters,
+    filters: ScanFilters,
 ) -> None:
-    st.markdown("### Tier 1 and Tier 2 — Actionable Candidates")
-    actionable = apply_breakout_filters(df, filters)
-    actionable = actionable[actionable["tier"].isin(["Tier 1", "Tier 2"])].sort_values(
+    tier_label = " + ".join(config.actionable_tiers)
+    st.markdown(f"### {tier_label} — Actionable Candidates")
+    actionable = apply_filters(df, filters, config)
+    actionable = actionable[actionable["tier"].isin(config.actionable_tiers)].sort_values(
         "final_score",
         ascending=False,
     )
@@ -193,6 +215,7 @@ def render_watchlist_tab(
         )
         return
 
+    top_tier = config.actionable_tiers[0] if config.actionable_tiers else ""
     for _, row in actionable.iterrows():
         symbol = row["ticker"]
         ticker_data = get_ticker_by_name(tickers, symbol)
@@ -200,10 +223,11 @@ def render_watchlist_tab(
             continue
         with st.expander(
             f"{symbol} — {row['tier']} — Score {row['final_score']:.1f}",
-            expanded=row["tier"] == "Tier 1",
+            expanded=row["tier"] == top_tier,
         ):
             st.markdown(
-                f"Open full profile: {ticker_link_html(symbol)} {tier_badge_html(row['tier'])}",
+                f"Open full profile: {ticker_link_html(symbol)} "
+                f"{tier_badge_html(row['tier'], config)}",
                 unsafe_allow_html=True,
             )
             st.caption(ticker_data.get("tier_reason", ""))
@@ -227,9 +251,15 @@ def render_watchlist_tab(
             st.caption("Click the ticker link above for fundamentals, technicals, and news.")
 
 
-def render_compare_tab(*, df: pd.DataFrame, tickers: list[dict], filters: BreakoutFilters) -> None:
+def render_compare_tab(
+    *,
+    config: VizStrategyConfig,
+    df: pd.DataFrame,
+    tickers: list[dict],
+    filters: ScanFilters,
+) -> None:
     st.markdown("### Compare Tickers")
-    filtered = apply_breakout_filters(df, filters)
+    filtered = apply_filters(df, filters, config)
     eligible_names = (
         filtered[filtered["eligible"]]
         .sort_values("final_score", ascending=False)["ticker"]
@@ -253,7 +283,7 @@ def render_compare_tab(*, df: pd.DataFrame, tickers: list[dict], filters: Breako
 
     compare_data = [get_ticker_by_name(tickers, name) for name in picked]
     compare_data = [item for item in compare_data if item]
-    fig = render_compare_radar(compare_data)
+    fig = render_compare_radar(compare_data, config)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
 
@@ -267,14 +297,7 @@ def render_compare_tab(*, df: pd.DataFrame, tickers: list[dict], filters: Breako
             "sector_etf": ticker_data.get("sector_etf"),
         }
         scores = ticker_data.get("scores") or {}
-        for key, label in [
-            ("rs_market", "RS Mkt"),
-            ("rs_sector", "RS Sec"),
-            ("compression", "Compress"),
-            ("accumulation", "Accum"),
-            ("revenue", "Revenue"),
-            ("eps", "EPS"),
-        ]:
+        for key, label in config.score_labels.items():
             row[label] = scores.get(key, {}).get("score", 0)
         compare_rows.append(row)
 
@@ -282,23 +305,5 @@ def render_compare_tab(*, df: pd.DataFrame, tickers: list[dict], filters: Breako
     st.dataframe(compare_df, use_container_width=True, hide_index=True)
     st.markdown(
         " · ".join(ticker_link_html(symbol) for symbol in compare_df["ticker"]),
-        unsafe_allow_html=True,
-    )
-
-
-def render_breakout_header(
-    *,
-    report_path: str,
-    summary: dict,
-    regime: dict,
-    detail_ticker: str | None,
-) -> None:
-    render_scan_header(report_path, summary, regime)
-    if not detail_ticker:
-        return
-    link = ticker_link_html(detail_ticker)
-    st.markdown(
-        f'<div class="info-card">Viewing profile: <strong>{link}</strong> '
-        f"— open the <em>Ticker Detail</em> tab or click any ticker link.</div>",
         unsafe_allow_html=True,
     )

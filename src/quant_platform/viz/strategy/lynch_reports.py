@@ -1,14 +1,10 @@
-"""Load Peter Lynch scan reports for the dashboard."""
+"""Peter Lynch report helpers for the dashboard."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pandas as pd
 
-from quant_platform.config import DEFAULT_LYNCH_JSON, HISTORY_DIR
-from quant_platform.viz.display import format_display_value
+from quant_platform.viz.shared.display import format_display_value
 
 CATEGORY_COLORS = {
     "fast_grower": "#22c55e",
@@ -16,22 +12,6 @@ CATEGORY_COLORS = {
     "asset_play": "#a855f7",
     "base": "#94a3b8",
 }
-
-
-def load_lynch_report(path: Path | str = DEFAULT_LYNCH_JSON) -> dict:
-    path = Path(path)
-    with path.open() as f:
-        return json.load(f)
-
-
-def list_lynch_report_paths() -> dict[str, str]:
-    """Map path string -> sidebar label (latest first)."""
-    options: dict[str, str] = {}
-    if DEFAULT_LYNCH_JSON.exists():
-        options[str(DEFAULT_LYNCH_JSON)] = "Latest (data/output)"
-    for p in sorted(HISTORY_DIR.glob("*/lynch_scan_report.json"), reverse=True):
-        options[str(p)] = f"Archive {p.parent.name}"
-    return options
 
 
 def lynch_tickers_to_dataframe(tickers: list[dict]) -> pd.DataFrame:

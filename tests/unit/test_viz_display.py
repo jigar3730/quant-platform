@@ -1,7 +1,7 @@
 import pandas as pd
 
-from quant_platform.viz.display import format_display_value
-from quant_platform.viz.lynch_data import lynch_checks_dataframe
+from quant_platform.viz.shared.display import format_display_value
+from quant_platform.viz.strategy.lynch_reports import lynch_checks_dataframe
 
 
 def test_format_display_value_handles_mixed_types():
@@ -32,7 +32,6 @@ def test_lynch_checks_dataframe_arrow_safe_strings():
     df = lynch_checks_dataframe(ticker)
     assert all(isinstance(value, str) for value in df["value"])
     assert all(isinstance(value, str) for value in df["threshold"])
-    # Streamlit serializes via Arrow — mixed object column of strings must convert cleanly
     import pyarrow as pa
 
     table = pa.Table.from_pandas(df)

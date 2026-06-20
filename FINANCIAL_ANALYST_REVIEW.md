@@ -1,6 +1,6 @@
 # Financial Analyst Review
 
-Review date: 2026-06-07. Scope: breakout scanner, Lynch scanner, dashboard, and underlying Yahoo Finance data pipeline.
+Review date: 2026-06-07 (updated 2026-06-20). Scope: breakout scanner, swing pullback scanner, Lynch scanner, strategy-aware dashboard, and underlying Yahoo Finance data pipeline.
 
 ## Executive summary
 

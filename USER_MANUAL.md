@@ -1,19 +1,26 @@
-# Breakout Scanner — User Manual
+# quant-platform — User Manual
 
-This guide explains how to install, run, and interpret results from the quant-platform breakout stock scanner.
+This guide explains how to install, run, and interpret results from the quant-platform stock scanners (breakout, swing pullback, and Peter Lynch).
 
-**Recent capabilities:** interactive dashboard (five tabs), full-universe table, ticker profile pages with live news, JSON daily archival, DuckDB score history, email alerts, and Docker scheduling.
+**Recent capabilities:** strategy-aware dashboard (Breakout / Swing / Lynch selector), full-universe table with filtered-but-scored tickers, ticker profile pages with live news, JSON daily archival, DuckDB score history per strategy, email alerts, and Docker scheduling.
 
 ## What this tool does
 
-The scanner identifies high-quality breakout candidates from a universe of actively traded US stocks. For each ticker it:
+The platform runs one or more scanners against a shared ticker universe. Each scanner:
 
-1. Downloads price, volume, and fundamental data from yfinance
-2. Applies hard eligibility filters (liquidity, trend, price, 52-week range)
-3. Scores passing stocks across nine technical and fundamental components
-4. Adjusts scores for the current SPY market regime
-5. Assigns a tier (Tier 1, Tier 2, Tier 3, or filtered)
-6. Exports ranked results to CSV and optional detailed reports
+1. Downloads price, volume, and (where applicable) fundamental data from yfinance
+2. Applies hard eligibility filters (liquidity, trend, price, range — strategy-specific)
+3. **Scores every ticker with price data**, even if it fails eligibility (filters become labels; tiers apply only to eligible names)
+4. Adjusts scores for the current SPY market regime (breakout and swing)
+5. Assigns a tier and exports ranked results to CSV and optional detailed reports
+
+### Scanners at a glance
+
+| Command | Strategy | Tiers | Dashboard |
+|---------|----------|-------|-----------|
+| `quant-scan` | Breakout | Tier 1 / 2 / 3 / filtered | Strategy → **Breakout** |
+| `quant-swing` | Swing pullback | A / B / C / filtered | Strategy → **Swing Pullback** |
+| `quant-lynch` | Peter Lynch | passed / failed + categories | Strategy → **Peter Lynch** |
 
 ### Scanner universe
 
@@ -67,6 +74,8 @@ Verify installation:
 
 ```bash
 quant-scan --help
+quant-swing --help
+quant-lynch --help
 quant-view --help    # requires [viz] extra
 ```
 
@@ -98,6 +107,55 @@ For a faster test on a handful of tickers:
 quant-scan --tickers AAPL,MSFT,NVDA,AMD,MU --report both
 quant-view
 ```
+
+---
+
+## Swing pullback scanner (`quant-swing`)
+
+Identifies stocks in a weekly uptrend experiencing a constructive pullback — useful for swing-entry timing rather than breakout compression setups.
+
+### Scoring components (max 60 raw points)
+
+| Component | What it measures |
+|-----------|------------------|
+| Weekly trend | EMA alignment and price above support on weekly bars |
+| Relative strength | Outperformance vs SPY over recent windows |
+| Pullback quality | Depth, structure, proximity to moving averages |
+| Pullback volume | Volume behavior during pullback vs rally legs |
+
+Penalties may apply for overextension or RSI climax conditions.
+
+### Tiers
+
+| Tier | Meaning |
+|------|---------|
+| **A** | Final score ≥ 80 |
+| **B** | Final score 65–79 |
+| **C** | Eligible, score below 65 |
+| **filtered** | Failed swing eligibility (liquidity, weekly trend, etc.) |
+
+### Usage
+
+```bash
+quant-swing --report both
+quant-swing --report both --archive    # archive + DuckDB history
+quant-swing --tickers NVDA,AMD,MU --cache
+```
+
+### CLI options
+
+Same pattern as `quant-scan`: `--tickers`, `--tickers-file`, `--dynamic-universe`, `--output`, `--cache`, `--dry-run`, `--report {json,md,both}`, `--report-json`, `--report-md`, `--archive`.
+
+### Outputs
+
+| File | Description |
+|------|-------------|
+| `data/output/swing_scan_results.csv` | Ranked summary |
+| `data/output/swing_scan_report.json` | Per-ticker detail (dashboard input) |
+| `data/output/swing_scan_summary.md` | Human-readable summary |
+| `data/history/YYYY-MM-DD/swing_scan_report.json` | Archived JSON (with `--archive`) |
+
+View results in the dashboard: select **Swing Pullback** in the sidebar Strategy dropdown.
 
 ---
 
@@ -278,7 +336,11 @@ Each row is one ticker. Eligible stocks appear first (sorted by score), then fil
 
 ## Eligibility filters (why stocks are excluded)
 
-A stock must pass **all** of these to be scored. Filtered stocks appear in output with `tier=filtered` and zero scores.
+A stock must pass **all** strategy-specific hard filters to receive a tier (Tier 1–3, A–C, or Lynch pass). Filtered stocks remain in output with `tier=filtered`.
+
+**Important:** Tickers with price data are still **scored** when filtered. The JSON report and dashboard show component scores and `filter_reason` / eligibility checks so you can see *why* a name failed and how strong its signals were anyway.
+
+### Breakout filter codes
 
 | Filter code | Rule |
 |-------------|------|
@@ -380,80 +442,84 @@ Good for a quick daily review without opening the dashboard.
 Requires the `[viz]` install extra (Streamlit + Plotly).
 
 ```bash
-quant-scan --report both --archive   # generate JSON + optional history
-quant-view                           # http://localhost:8501
+quant-scan --report both --archive    # Breakout JSON + history
+quant-swing --report both --archive   # Swing JSON + history
+quant-lynch --report both --archive   # Lynch JSON + history
+quant-view                            # http://localhost:8501
 ```
 
-### Layout
+### Strategy selector
 
-**Header** — universe size, eligible count, tier breakdown, SPY regime multiplier.
+The sidebar **Strategy** dropdown switches the entire UI:
 
-**Sidebar**
-- **Breakout scan to load** — latest output or any archived day (`data/history/YYYY-MM-DD/breakout_scan_report.json`)
-- **Lynch scan to load** — latest Lynch output or archived `lynch_scan_report.json`
-- **Filters** — tier, eligible only, actionable only (Tier 1+2), min score, ticker search
-- **Open ticker profile** — jump to any symbol's detail view
-- **Sync archives to DuckDB** — backfill breakout and Lynch history from JSON archives
-- **Score component guide** — plain-language explanation of each indicator
+| Strategy | Report file | Tab layout |
+|----------|-------------|------------|
+| **Breakout** | `breakout_scan_report.json` | Five price-scanner tabs (below) |
+| **Swing Pullback** | `swing_scan_report.json` | Same five tabs, swing tiers/scores |
+| **Peter Lynch** | `lynch_scan_report.json` | Lynch sub-tabs (Overview, Candidates, All Tickers, Ticker Detail) |
 
-**Ticker links** — blue links (`?ticker=MU`) appear throughout the app. Clicking one opens that ticker's profile (sets URL query param and sidebar selection).
+Only one strategy is active at a time. Pick **Report** to load latest output or an archived day (`data/history/YYYY-MM-DD/`).
 
-### Tabs
+### Sidebar (price scanners: Breakout & Swing)
+
+- **Strategy** — Breakout, Swing Pullback, or Peter Lynch
+- **Report** — latest `data/output/` or archived JSON for the selected strategy
+- **Report path** — override path manually if needed
+- **Filters** — tier (strategy-specific labels), eligible only, actionable only (Tier 1+2 or A+B), min score, ticker search
+- **Score component guide** — plain-language explanation of each indicator (breakout/swing)
+- **Open ticker profile** — jump to any symbol (price scanners only)
+- **Sync archives to DuckDB** — backfill breakout, swing, and Lynch history from JSON archives
+
+**Ticker links** — blue links (`?ticker=MU`) appear throughout price-scanner views. Clicking one opens that ticker's profile (URL query param + sidebar selection).
+
+### Price-scanner tabs (Breakout & Swing)
+
+Shared layout; charts and columns adapt to the selected strategy (tiers, score labels, scatter axes).
+
+#### Full Universe
+Interactive table for every scanned symbol:
+- Tier, eligibility, final/normalized scores, sector ETF, component scores
+- `filter_reason` / exclusion label for filtered rows (scores still shown when present)
+- Sort, sector filter, view mode (All / Eligible / Actionable)
+- Click a row for an inline preview panel; **Open full profile** jumps to Ticker Detail
+- **Download CSV** — export the filtered table
 
 #### Overview
-- SPY market regime panel (price, SMAs, 63d return, 52w high distance)
-- Tier distribution donut chart
+- SPY market regime panel
+- Tier distribution chart (Tier 1/2/3 or A/B/C + filtered)
 - Exclusion breakdown (why stocks failed filters)
-- Score histogram, component heatmap, compression vs RS scatter plot
-- Clickable ticker links under the scatter chart
-
-#### All Tickers
-Full universe table for every scanned symbol:
-- Tier, eligibility, final/normalized/raw scores, sector ETF
-- All nine component scores (RS, volume, compression, pattern, resistance, revenue, EPS)
-- Revenue YoY % and EPS growth % (when available)
-- Filter reason for excluded stocks
-
-**Interactions:**
-- Click any table row to open that ticker's profile
-- Click blue ticker links (first 30 shown below table)
-- **Download CSV** — export the full filtered table
-
-Sidebar filters apply to this tab.
+- Score histogram, component heatmap, strategy-specific scatter (e.g. compression vs RS for breakout; pullback vs RS for swing)
 
 #### Ticker Detail
 Unified profile for one symbol:
-- **Live news and market update** — current price, day change, market cap, 1Y change, today's range, recent headlines with links (fetched live from Yahoo Finance; cached 5–10 minutes)
-- **Score history chart** — final and normalized scores over archived scan dates (requires `--archive` on multiple days)
-- **Fundamentals tab** — revenue and EPS scores with raw growth metrics
-- **Technical tab** — RS, volume, compression, pattern, resistance with bar and radar charts
-- **Eligibility tab** — pass/fail checks with actual values and thresholds
-
-Use the sidebar picker, All Tickers row click, or any `?ticker=` link to navigate here.
+- Live news and market snapshot (Yahoo Finance; cached 5–10 minutes)
+- **Score history chart** from DuckDB (`strategy_id` = breakout or swing; requires archived scans)
+- Fundamentals tab (breakout revenue/EPS; empty for swing)
+- Technical tab — component bar/radar charts from strategy config
+- Eligibility tab — pass/fail checks with actual values
 
 #### Actionable Watchlist
-Tier 1 and Tier 2 candidates only. Each expander shows key metrics and a link to the full Ticker Detail profile.
+Top-tier candidates only: Tier 1+2 (breakout) or A+B (swing). Expanders link to full profiles.
 
 #### Compare
-Select 2–3 eligible tickers for an overlay radar chart and side-by-side score table. Profile links above and below the table.
+Select 2–3 eligible tickers for overlay radar chart and side-by-side score table.
 
-#### Peter Lynch
-Dedicated tab for Lynch scan review (requires `quant-lynch --report both` or an archived Lynch JSON):
+### Peter Lynch views
 
-- **Overview** — category breakdown (fast grower / stalwart / asset play), score histogram, qualitative overlay
-- **Candidates** — ranked passers with expandable per-ticker checks and metrics
+When **Peter Lynch** is selected, the main tab bar is replaced by Lynch sub-tabs:
+
+- **Overview** — category breakdown, score histogram, qualitative overlay
+- **Candidates** — ranked passers with expandable checks
 - **All Tickers** — full universe with passed/category filters and CSV download
-- **Ticker Detail** — Lynch score, P/E, PEG, quantitative checks, optional score history from DuckDB
-
-Pick the scan date in the sidebar **Lynch scan to load** dropdown (latest or `data/history/YYYY-MM-DD/`).
+- **Ticker Detail** — Lynch score, P/E, PEG, quantitative checks, DuckDB history
 
 ### Dashboard tips
 
-- Run `quant-scan --report both` to refresh; press **R** in the browser or reload to pick up new data
-- Load archived scans from the sidebar to review past days (JSON is preserved per day under `data/history/`)
-- Use **All Tickers** + **Download CSV** for spreadsheet work outside the dashboard
-- Live news requires network access when viewing a ticker profile
-- Score history needs multiple archived scans (`quant-daily` or `--archive` each day)
+- Run the matching CLI with `--report both` to refresh JSON; press **R** in the browser or reload
+- Load archived scans from the **Report** dropdown to review past days
+- Filtered tickers may show non-zero component scores — use **Full Universe** and **Ticker Detail** to inspect
+- Live news requires network access; score history needs multiple archived scans and **Sync archives to DuckDB**
+- If report `strategy_id` does not match the selected strategy, the dashboard shows a warning
 
 ---
 
@@ -466,17 +532,22 @@ Archiving writes **both** JSON and a queryable DuckDB database. Nothing replaces
 | JSON archive | `data/history/YYYY-MM-DD/breakout_scan_report.json` | Full detail, audit trail, dashboard drill-down |
 | DuckDB | `data/scan_history.duckdb` | Score trends, tier changes over time |
 
-DuckDB tables:
-- `scans` — day-level metadata (universe size, tier counts, regime)
-- `ticker_scores` — per-ticker tier and scores per scan date
-- `component_scores` — per-component points per ticker per date
+DuckDB tables (schema v2 — composite primary key includes `strategy_id` and `scan_time`):
+
+- `scans` — day-level metadata per strategy (universe size, tier counts, regime)
+- `ticker_scores` — per-ticker tier and scores per scan
+- `component_scores` — per-component points per ticker per scan
+
+Breakout and swing share `ticker_scores` / `component_scores` with `strategy_id` of `breakout` or `swing`. Lynch uses separate `lynch_*` tables.
 
 **Enable history:**
 
 ```bash
 quant-scan --report both --archive
+quant-swing --report both --archive
+quant-lynch --report both --archive
 # or
-quant-daily --no-email
+quant-daily --no-email   # breakout only
 ```
 
 **Backfill** existing JSON archives into DuckDB: click **Sync archives to DuckDB** in the dashboard sidebar (or archives auto-sync on first load if the DB is missing).
@@ -525,7 +596,7 @@ After several days:
 
 ### Reviewing a past scan
 
-Select **Archive YYYY-MM-DD** in the dashboard sidebar, or set the report path manually.
+Select **Report → Archive YYYY-MM-DD** in the dashboard sidebar for the chosen strategy, or edit the report path manually.
 
 ### Automated daily scan (Docker)
 
@@ -635,7 +706,8 @@ Docker volumes map `./data` and `./logs` to the host. Historical archives surviv
 |---------|----------|
 | `yfinance screener unavailable; using fallback universe` | Network or API issue; retry later or use `--tickers` with your own list |
 | Only 10 tickers scanned instead of 100 | Fallback universe was used; check network, update yfinance |
-| `Report not found` in dashboard | Run `quant-scan --report both` first |
+| `Report not found` in dashboard | Run the matching scanner with `--report both` (e.g. `quant-swing --report both` for Swing) |
+| Wrong tiers/scores in dashboard | Confirm **Strategy** matches the JSON (`strategy_id` field); reload correct report |
 | `quant-view` not found | Install viz extra: `uv pip install -e .[viz]` |
 | Missing fundamentals (0 revenue/EPS score) | yfinance had no quarterly data; stock still scored on technicals |
 | Scan is slow | Use `--cache` for same-day re-runs; use `--tickers` for smaller universe |
