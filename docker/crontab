@@ -1,23 +1,39 @@
 # ==============================================================================
 # QUANT SCANNER SCHEDULES
 # Cron Format: [Min] [Hour] [Day-of-Month] [Month] [Day-of-Week] [User] [Command]
+#
+# Timezone: container TZ (default America/New_York via docker-compose .env)
+# Universe:  shared data/tickers.txt for all scanners (falls back to Yahoo most-actives)
+# Archive:   each job writes to data/output/ and data/history/YYYY-MM-DD/ + DuckDB
+# Dashboard: quant-view reads breakout, swing, and lynch JSON via Strategy selector
+# Logs:      stdout/stderr appended to /app/logs/cron.log
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Breakout Scanner
+# Breakout Scanner (quant-daily)
 # ------------------------------------------------------------------------------
-# Runs: Mon, Tue, Wed, Thu, Fri at 17:17 (5:17 PM EDT)
-# Details: Loads system environment variables, runs the core breakout daily scan,
-#          and appends execution output to cron.log.
+# Runs: Mon–Fri at 17:17 (5:17 PM)
+# Command: quant-daily  (= quant-scan --report both --archive --email)
+# Outputs: breakout_scan_{results,report,summary}.{csv,json,md}
+#          Emails Tier 1 + Tier 2 when SMTP_* / EMAIL_* env vars are set
 # ------------------------------------------------------------------------------
 17 17 * * 1-5 root . /etc/environment; quant-daily >> /app/logs/cron.log 2>&1
 
 # ------------------------------------------------------------------------------
-# Peter Lynch Value Scanner
+# Swing Pullback Scanner (quant-swing)
 # ------------------------------------------------------------------------------
-# Runs: Fridays only at 18:17 (6:17 PM EDT)
-# Details: Loads system environment variables, runs the weekly lynch valuation 
-#          analysis, compiles both types of reports, archives results, 
-#          and appends logs to cron.log.
+# Runs: Mon–Fri at 17:27 (5:27 PM) — 10 min after breakout to reduce API overlap
+# Command: quant-swing --report both --archive
+# Outputs: swing_scan_{results,report,summary}.{csv,json,md}
+# Tiers:    A (≥80), B (65–79), C, filtered
+# ------------------------------------------------------------------------------
+27 17 * * 1-5 root . /etc/environment; quant-swing --report both --archive >> /app/logs/cron.log 2>&1
+
+# ------------------------------------------------------------------------------
+# Peter Lynch Scanner (quant-lynch)
+# ------------------------------------------------------------------------------
+# Runs: Fridays only at 18:17 (6:17 PM)
+# Command: quant-lynch --report both --archive  (preset: summary — all categories)
+# Outputs: lynch_scan_{results,report,summary}.{csv,json,md}
 # ------------------------------------------------------------------------------
 17 18 * * 5 root . /etc/environment; quant-lynch --report both --archive >> /app/logs/cron.log 2>&1

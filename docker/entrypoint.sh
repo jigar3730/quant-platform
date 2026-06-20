@@ -20,7 +20,7 @@ case "${1:-scheduler}" in
     # Launches the dashboard on port 5000 and directs logs cleanly to dashboard.log
     quant-view --server.port 5000 --server.address 0.0.0.0 > /app/logs/dashboard.log 2>&1 &
 
-    echo "Starting cron scheduler (daily scans configured at 5:17 PM ${TZ})..."
+    echo "Starting cron scheduler (breakout 5:17 PM, swing 5:27 PM, lynch Fri 6:17 PM ${TZ})..."
     
     # Exec into cron in the foreground. This becomes Process 1 (PID 1), 
     # keeping the container running permanently and executing your schedules.
