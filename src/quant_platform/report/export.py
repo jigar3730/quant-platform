@@ -19,8 +19,16 @@ def export_markdown_report(report: dict, path: Path) -> Path:
 def _render_markdown(report: dict) -> list[str]:
     summary = report["scan_summary"]
     regime = report["market_regime"]
+    strategy_id = report.get("strategy_id", "breakout")
+    title = {
+        "swing": "Swing Pullback Scan Report",
+        "breakout": "Breakout Scan Report",
+    }.get(strategy_id, f"{strategy_id.title()} Scan Report")
+    tier_line = " | ".join(
+        f"{name}: {count}" for name, count in summary["tier_counts"].items()
+    )
     lines = [
-        "# Breakout Scan Report",
+        f"# {title}",
         "",
         "## Market Regime",
         "",
@@ -39,12 +47,7 @@ def _render_markdown(report: dict) -> list[str]:
         "",
         f"- Universe: {summary['universe_size']} tickers",
         f"- Eligible: {summary['eligible_count']} | Excluded: {summary['excluded_count']}",
-        (
-            f"- Tier 1: {summary['tier_counts']['Tier 1']}"
-            f" | Tier 2: {summary['tier_counts']['Tier 2']}"
-            f" | Tier 3: {summary['tier_counts']['Tier 3']}"
-            f" | Filtered: {summary['tier_counts']['filtered']}"
-        ),
+        f"- {tier_line}",
         "",
     ]
 
