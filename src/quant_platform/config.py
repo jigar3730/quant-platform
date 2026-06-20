@@ -17,6 +17,9 @@ DEFAULT_DRY_RUN_MD = DRY_RUN_OUTPUT_DIR / "breakout_scan_summary.md"
 DEFAULT_LYNCH_CSV = OUTPUT_DIR / "lynch_scan_results.csv"
 DEFAULT_LYNCH_JSON = OUTPUT_DIR / "lynch_scan_report.json"
 DEFAULT_LYNCH_MD = OUTPUT_DIR / "lynch_scan_summary.md"
+DEFAULT_SWING_CSV = OUTPUT_DIR / "swing_scan_results.csv"
+DEFAULT_SWING_JSON = OUTPUT_DIR / "swing_scan_report.json"
+DEFAULT_SWING_MD = OUTPUT_DIR / "swing_scan_summary.md"
 DEFAULT_TICKERS_FILE = DATA_DIR / "tickers.txt"
 
 UNIVERSE_SIZE = 250

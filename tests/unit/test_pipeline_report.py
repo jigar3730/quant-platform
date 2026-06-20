@@ -24,6 +24,7 @@ def test_dry_run_with_report(tmp_path: Path):
     assert md_path.exists()
 
     report = json.loads(json_path.read_text())
+    assert report.get("strategy_id") == "breakout"
     assert "scan_summary" in report
     assert "market_regime" in report
     assert len(report["tickers"]) == 2

@@ -87,7 +87,18 @@ def _connect() -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(str(HISTORY_DB))
     conn.execute(_SCHEMA_SQL)
     conn.execute(_LYNCH_SCHEMA_SQL)
+    _ensure_strategy_id_columns(conn)
     return conn
+
+
+def _ensure_strategy_id_columns(conn: duckdb.DuckDBPyConnection) -> None:
+    """Add strategy_id to existing tables (nullable, default breakout)."""
+    for table in ("scans", "ticker_scores", "component_scores"):
+        cols = {row[0] for row in conn.execute(f"DESCRIBE {table}").fetchall()}
+        if "strategy_id" not in cols:
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN strategy_id VARCHAR DEFAULT 'breakout'"
+            )
 
 
 def upsert_scan_report(
@@ -101,18 +112,32 @@ def upsert_scan_report(
     summary = report["scan_summary"]
     regime = report["market_regime"]
     tiers = summary["tier_counts"]
+    strategy_id = report.get("strategy_id", "breakout")
     scan_key = scan_date.isoformat()
 
     conn = _connect()
     try:
         conn.execute("BEGIN")
-        conn.execute("DELETE FROM component_scores WHERE scan_date = ?", [scan_key])
-        conn.execute("DELETE FROM ticker_scores WHERE scan_date = ?", [scan_key])
-        conn.execute("DELETE FROM scans WHERE scan_date = ?", [scan_key])
+        conn.execute(
+            "DELETE FROM component_scores WHERE scan_date = ? AND strategy_id = ?",
+            [scan_key, strategy_id],
+        )
+        conn.execute(
+            "DELETE FROM ticker_scores WHERE scan_date = ? AND strategy_id = ?",
+            [scan_key, strategy_id],
+        )
+        conn.execute(
+            "DELETE FROM scans WHERE scan_date = ? AND strategy_id = ?",
+            [scan_key, strategy_id],
+        )
 
         conn.execute(
             """
-            INSERT INTO scans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO scans (
+                scan_date, scan_time, universe_size, eligible_count, excluded_count,
+                tier1_count, tier2_count, tier3_count, filtered_count, actionable_count,
+                regime, regime_multiplier, archive_dir, json_path, strategy_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 scan_key,
@@ -129,6 +154,7 @@ def upsert_scan_report(
                 regime["multiplier"],
                 str(archive_dir) if archive_dir else None,
                 str(json_path) if json_path else None,
+                strategy_id,
             ],
         )
 
@@ -137,7 +163,10 @@ def upsert_scan_report(
             elig = t.get("eligibility") or {}
             conn.execute(
                 """
-                INSERT INTO ticker_scores VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO ticker_scores (
+                    scan_date, ticker, eligible, tier, sector_etf,
+                    raw_score, normalized_score, final_score, filter_reason, strategy_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     scan_key,
@@ -149,13 +178,16 @@ def upsert_scan_report(
                     s.get("normalized_score", 0),
                     s.get("final_adjusted_score", 0),
                     elig.get("fail_reason"),
+                    strategy_id,
                 ],
             )
             scores = t.get("scores") or {}
             for component, comp in scores.items():
                 conn.execute(
                     """
-                    INSERT INTO component_scores VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO component_scores (
+                        scan_date, ticker, component, score, max_score, strategy_id
+                    ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     [
                         scan_key,
@@ -163,6 +195,7 @@ def upsert_scan_report(
                         component,
                         comp.get("score", 0),
                         comp.get("max", 0),
+                        strategy_id,
                     ],
                 )
         conn.execute("COMMIT")
