@@ -433,53 +433,22 @@ def render_ticker_detail(
     ticker_data: dict,
     config: VizStrategyConfig,
     *,
+    df: pd.DataFrame | None = None,
+    report_path: str = "Latest",
     compact_news: bool = False,
     show_history: bool = True,
 ) -> None:
-    tier = ticker_data.get("tier", "filtered")
-    eligible = ticker_data.get("eligible", False)
-    st.markdown(
-        f"## {ticker_link_html(ticker)} {tier_badge_html(tier, config)}",
-        unsafe_allow_html=True,
+    """Deprecated alias — delegates to Finqube company page layout."""
+    del compact_news, show_history
+    from quant_platform.viz.layout.company import render_company_page
+
+    render_company_page(
+        ticker=ticker,
+        ticker_data=ticker_data,
+        config=config,
+        df=df if df is not None else pd.DataFrame(),
+        report_path=report_path,
     )
-    if ticker_data.get("tier_reason"):
-        st.info(ticker_data["tier_reason"])
-    elif not eligible:
-        fail = ticker_data.get("eligibility", {}).get("fail_reason")
-        if fail:
-            label = FILTER_LABELS.get(fail, fail.replace("_", " ").title())
-            st.warning(f"Filtered: {label}")
-
-    summary = ticker_data.get("summary", {})
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Final Score", f"{summary.get('final_adjusted_score', 0):.1f}")
-    m2.metric("Normalized", f"{summary.get('normalized_score', 0):.1f}")
-    m3.metric("Raw Score", f"{summary.get('raw_score', 0):.1f}")
-    m4.metric("Sector ETF", ticker_data.get("sector_etf") or "—")
-
-    render_ticker_news_panel(ticker, compact=compact_news)
-
-    if show_history and config.duckdb_strategy_id:
-        from quant_platform.history.duckdb_store import get_ticker_history
-
-        history = get_ticker_history(ticker, strategy_id=config.duckdb_strategy_id)
-        if history:
-            hist_fig = render_score_history(history, ticker)
-            if hist_fig:
-                st.plotly_chart(hist_fig, use_container_width=True)
-            hist_cols = ["scan_date", "scan_time", "tier", "final_score", "normalized_score"]
-            hist_cols = [c for c in hist_cols if c in history[0]]
-            hist_df = pd.DataFrame(history)[hist_cols]
-            with st.expander(f"Score history ({len(history)} scans)"):
-                st.dataframe(hist_df, use_container_width=True, hide_index=True)
-
-    tab_fund, tab_tech, tab_elig = st.tabs(["Fundamentals", "Technical", "Eligibility"])
-    with tab_fund:
-        render_fundamentals_panel(ticker_data, config)
-    with tab_tech:
-        render_technical_panel(ticker_data, ticker, config)
-    with tab_elig:
-        render_eligibility_panel(ticker_data)
 
 
 def get_ticker_by_name(tickers: list[dict], name: str) -> dict | None:

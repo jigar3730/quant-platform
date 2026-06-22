@@ -138,6 +138,18 @@ def test_validate_report_strategy_mismatch():
     assert "swing" in msg
 
 
+def test_score_component_keys_map_to_pill_labels():
+    breakout = get_viz_strategy("breakout")
+    swing = get_viz_strategy("swing")
+    assert len(breakout.score_component_keys) == 9
+    assert len(swing.score_component_keys) == 4
+    for key in breakout.score_component_keys:
+        assert key in breakout.score_labels
+    for key in swing.score_component_keys:
+        assert key in swing.score_labels
+    assert swing.score_labels["pullback"] == "Pullback Quality"
+
+
 def test_tier_chart_keys_match_config():
     breakout = get_viz_strategy("breakout")
     swing = get_viz_strategy("swing")
