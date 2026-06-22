@@ -25,4 +25,5 @@ data/scan_history.duckdb
 logs/*.log
 
 .env
+docker-compose.override.yml
 *.parquet
