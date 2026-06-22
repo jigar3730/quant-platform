@@ -22,7 +22,7 @@ def _sample_ticker() -> dict:
         "scores": {
             "rs_market": {"score": 18.0, "max": 20, "meaning": "Strong RS"},
             "compression": {"score": 4.0, "max": 15, "meaning": "Weak compression"},
-            "volume": {"score": 12.0, "max": 15, "meaning": "Good volume"},
+            "relative_volume": {"score": 12.0, "max": 15, "meaning": "Good volume"},
         },
     }
 
