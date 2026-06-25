@@ -14,6 +14,7 @@ services:
     volumes:
       - /mnt/fast/quant-data/data:/app/data
       - /mnt/fast/quant-data/logs:/app/logs
+      - ./data/tickers.txt:/app/data/tickers.txt
     command: scheduler
     ports:
       - "5001:5000"

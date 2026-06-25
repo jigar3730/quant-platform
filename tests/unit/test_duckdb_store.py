@@ -85,6 +85,57 @@ def test_upsert_and_query_ticker_history(tmp_path: Path, monkeypatch):
     assert list_scan_dates() == ["2026-06-06"]
 
 
+def test_upsert_scan_report_handles_swing_tiers(tmp_path: Path, monkeypatch):
+    _, db = _patch_paths(tmp_path, monkeypatch)
+    report = {
+        "strategy_id": "swing",
+        "scan_summary": {
+            "universe_size": 2,
+            "eligible_count": 1,
+            "excluded_count": 1,
+            "tier_counts": {"A": 1, "B": 0, "C": 0, "filtered": 1},
+            "filter_breakdown": {},
+            "actionable_count": 1,
+        },
+        "market_regime": {"label": "strong", "multiplier": 1.0},
+        "tickers": [
+            {
+                "ticker": "MU",
+                "eligible": True,
+                "tier": "A",
+                "sector_etf": "SOXX",
+                "eligibility": {"fail_reason": None},
+                "summary": {
+                    "raw_score": 82.0,
+                    "normalized_score": 78.0,
+                    "final_adjusted_score": 82.0,
+                },
+                "scores": None,
+            },
+            {
+                "ticker": "XYZ",
+                "eligible": False,
+                "tier": "filtered",
+                "sector_etf": None,
+                "eligibility": {"fail_reason": "trend_misaligned"},
+                "summary": {
+                    "raw_score": 0,
+                    "normalized_score": 0,
+                    "final_adjusted_score": 0,
+                },
+                "scores": None,
+            },
+        ],
+    }
+
+    upsert_scan_report(report, scan_date=date(2026, 6, 6))
+    assert db.exists()
+    assert list_scan_dates() == ["2026-06-06"]
+    swing_history = get_ticker_history("MU")
+    assert len(swing_history) == 1
+    assert swing_history[0]["tier"] == "A"
+
+
 def test_archive_writes_json_and_duckdb(tmp_path: Path, monkeypatch):
     history, db = _patch_paths(tmp_path, monkeypatch)
     report = _sample_report()

@@ -115,6 +115,16 @@ def upsert_scan_report(
     strategy_id = report.get("strategy_id", "breakout")
     scan_key = scan_date.isoformat()
 
+    if strategy_id == "swing":
+        tier1 = tiers.get("A", 0)
+        tier2 = tiers.get("B", 0)
+        tier3 = tiers.get("C", 0)
+    else:
+        tier1 = tiers.get("Tier 1", 0)
+        tier2 = tiers.get("Tier 2", 0)
+        tier3 = tiers.get("Tier 3", 0)
+    actionable = summary.get("actionable_count", tier1 + tier2)
+
     conn = _connect()
     try:
         conn.execute("BEGIN")
@@ -145,11 +155,11 @@ def upsert_scan_report(
                 summary["universe_size"],
                 summary["eligible_count"],
                 summary.get("excluded_count", 0),
-                tiers["Tier 1"],
-                tiers["Tier 2"],
-                tiers["Tier 3"],
-                tiers["filtered"],
-                tiers["Tier 1"] + tiers["Tier 2"],
+                tier1,
+                tier2,
+                tier3,
+                tiers.get("filtered", 0),
+                actionable,
                 regime["label"],
                 regime["multiplier"],
                 str(archive_dir) if archive_dir else None,
