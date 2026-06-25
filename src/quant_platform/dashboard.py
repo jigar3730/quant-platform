@@ -8,7 +8,7 @@ import streamlit as st
 
 from quant_platform.viz.data import load_report, tickers_to_dataframe
 from quant_platform.viz.lynch_components import render_lynch_tab
-from quant_platform.viz.lynch_data import list_lynch_report_paths, load_lynch_report
+from quant_platform.viz.lynch_data import load_lynch_report
 from quant_platform.viz.navigation import sync_detail_ticker
 from quant_platform.viz.pages.breakout import (
     render_all_tickers_tab,
@@ -30,7 +30,7 @@ st.set_page_config(
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-report_path, lynch_report_path, filters = render_sidebar_controls()
+report_path, lynch_report_path, filters, lynch_options = render_sidebar_controls()
 
 report = None
 df = None
@@ -51,7 +51,6 @@ except FileNotFoundError:
 except json.JSONDecodeError:
     st.sidebar.error("Invalid breakout JSON report file.")
 
-lynch_options = list_lynch_report_paths()
 lynch_report = None
 if lynch_report_path:
     try:
@@ -69,6 +68,14 @@ if report is None and lynch_report is None:
     )
     st.stop()
 
+
+def _render_breakout_tab(render_fn, *args, **kwargs):
+    if report is None:
+        st.info("Load a breakout scan from the sidebar to view this tab.")
+    else:
+        render_fn(*args, **kwargs)
+
+
 detail_ticker = render_sidebar_ticker_picker(all_symbols) if all_symbols else sync_detail_ticker()
 
 if report is not None:
@@ -79,7 +86,10 @@ if report is not None:
         detail_ticker=detail_ticker,
     )
 
-tab_names = ["Full Universe", "Overview", "Ticker Detail", "Actionable Watchlist", "Compare"]
+    tab_names = ["Overview", "Full Universe", "Ticker Detail", "Actionable Watchlist", "Compare"]
+else:
+    tab_names = []
+
 if lynch_report is not None or lynch_options:
     tab_names.append("Peter Lynch")
 
@@ -87,17 +97,15 @@ tabs = st.tabs(tab_names)
 tab_map = dict(zip(tab_names, tabs, strict=True))
 
 with tab_map["Overview"]:
-    if report is None:
-        st.info("Load a breakout scan from the sidebar to view this tab.")
-    else:
-        render_overview_tab(
-            report_path=report_path,
-            summary=summary,
-            regime=regime,
-            df=df,
-            tickers=tickers,
-            filters=filters,
-        )
+    _render_breakout_tab(
+        render_overview_tab,
+        report_path=report_path,
+        summary=summary,
+        regime=regime,
+        df=df,
+        tickers=tickers,
+        filters=filters,
+    )
 
 with tab_map["Full Universe"]:
     if report is None:
@@ -110,26 +118,28 @@ with tab_map["Full Universe"]:
         )
 
 with tab_map["Ticker Detail"]:
-    if report is None:
-        st.info("Load a breakout scan from the sidebar to view this tab.")
-    else:
-        render_ticker_detail_tab(
-            tickers=tickers,
-            all_symbols=all_symbols,
-            detail_ticker=detail_ticker,
-        )
+    _render_breakout_tab(
+        render_ticker_detail_tab,
+        tickers=tickers,
+        all_symbols=all_symbols,
+        detail_ticker=detail_ticker,
+    )
 
 with tab_map["Actionable Watchlist"]:
-    if report is None:
-        st.info("Load a breakout scan from the sidebar to view this tab.")
-    else:
-        render_watchlist_tab(df=df, tickers=tickers, filters=filters)
+    _render_breakout_tab(
+        render_watchlist_tab,
+        df=df,
+        tickers=tickers,
+        filters=filters,
+    )
 
 with tab_map["Compare"]:
-    if report is None:
-        st.info("Load a breakout scan from the sidebar to view this tab.")
-    else:
-        render_compare_tab(df=df, tickers=tickers, filters=filters)
+    _render_breakout_tab(
+        render_compare_tab,
+        df=df,
+        tickers=tickers,
+        filters=filters,
+    )
 
 if "Peter Lynch" in tab_map:
     with tab_map["Peter Lynch"]:

@@ -23,7 +23,7 @@ def _breakout_report_options() -> dict[str, str]:
     return options
 
 
-def render_sidebar_controls() -> tuple[str, str, BreakoutFilters]:
+def render_sidebar_controls() -> tuple[str, str, BreakoutFilters, dict[str, str]]:
     st.sidebar.title("Controls")
 
     history_options = _breakout_report_options()
@@ -72,7 +72,7 @@ def render_sidebar_controls() -> tuple[str, str, BreakoutFilters]:
             f"Synced {breakout_synced} breakout + {lynch_synced} Lynch archived scan(s)."
         )
 
-    return report_path, lynch_report_path, filters
+    return report_path, lynch_report_path, filters, lynch_options
 
 
 def render_sidebar_ticker_picker(all_symbols: list[str]) -> str | None:
