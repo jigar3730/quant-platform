@@ -1,11 +1,16 @@
 FROM python:3.12-slim
 
-# Install system dependencies (added procps for system/process handling tools)
+# Install system dependencies (added tzdata for proper system-level time management)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     cron \
     procps \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+# Configure system-level timezone so the cron daemon respects Eastern Time
+RUN ln -snf /usr/share/zoneinfo/America/New_York /etc/localtime && \
+    echo "America/New_York" > /etc/timezone
 
 # Install uv for fast package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -32,7 +37,7 @@ RUN chmod 0644 /etc/cron.d/quant-scan && \
 # Create required directories for application data and logs
 RUN mkdir -p /app/data/output /app/data/history /app/data/cache /app/logs
 
-# Set default Timezone to Eastern Time
+# Set default Timezone environment variable for application runtimes
 ENV TZ=America/New_York
 
 VOLUME ["/app/data", "/app/logs"]
