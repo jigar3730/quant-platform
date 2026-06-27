@@ -10,9 +10,10 @@ import duckdb
 
 from quant_platform.config import HISTORY_DB, HISTORY_DIR
 
+# UPDATED: Added strategy_id to PRIMARY KEYs to allow multi-strategy tracking per date
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
-    scan_date DATE PRIMARY KEY,
+    scan_date DATE,
     scan_time TIMESTAMP,
     universe_size INTEGER,
     eligible_count INTEGER,
@@ -25,7 +26,9 @@ CREATE TABLE IF NOT EXISTS scans (
     regime VARCHAR,
     regime_multiplier DOUBLE,
     archive_dir VARCHAR,
-    json_path VARCHAR
+    json_path VARCHAR,
+    strategy_id VARCHAR DEFAULT 'breakout',
+    PRIMARY KEY (scan_date, strategy_id)
 );
 
 CREATE TABLE IF NOT EXISTS ticker_scores (
@@ -38,7 +41,8 @@ CREATE TABLE IF NOT EXISTS ticker_scores (
     normalized_score DOUBLE,
     final_score DOUBLE,
     filter_reason VARCHAR,
-    PRIMARY KEY (scan_date, ticker)
+    strategy_id VARCHAR DEFAULT 'breakout',
+    PRIMARY KEY (scan_date, ticker, strategy_id)
 );
 
 CREATE TABLE IF NOT EXISTS component_scores (
@@ -47,7 +51,8 @@ CREATE TABLE IF NOT EXISTS component_scores (
     component VARCHAR,
     score DOUBLE,
     max_score DOUBLE,
-    PRIMARY KEY (scan_date, ticker, component)
+    strategy_id VARCHAR DEFAULT 'breakout',
+    PRIMARY KEY (scan_date, ticker, component, strategy_id)
 );
 """
 
@@ -92,7 +97,7 @@ def _connect() -> duckdb.DuckDBPyConnection:
 
 
 def _ensure_strategy_id_columns(conn: duckdb.DuckDBPyConnection) -> None:
-    """Add strategy_id to existing tables (nullable, default breakout)."""
+    """Add strategy_id to existing tables if missing and migrate constraints if necessary."""
     for table in ("scans", "ticker_scores", "component_scores"):
         cols = {row[0] for row in conn.execute(f"DESCRIBE {table}").fetchall()}
         if "strategy_id" not in cols:
@@ -108,7 +113,7 @@ def upsert_scan_report(
     archive_dir: Path | None = None,
     json_path: Path | None = None,
 ) -> None:
-    """Insert or replace one day's scan into DuckDB."""
+    """Insert or replace one day's scan into DuckDB using native UPSERT/REPLACE expressions."""
     summary = report["scan_summary"]
     regime = report["market_regime"]
     tiers = summary["tier_counts"]
@@ -128,22 +133,11 @@ def upsert_scan_report(
     conn = _connect()
     try:
         conn.execute("BEGIN")
-        conn.execute(
-            "DELETE FROM component_scores WHERE scan_date = ? AND strategy_id = ?",
-            [scan_key, strategy_id],
-        )
-        conn.execute(
-            "DELETE FROM ticker_scores WHERE scan_date = ? AND strategy_id = ?",
-            [scan_key, strategy_id],
-        )
-        conn.execute(
-            "DELETE FROM scans WHERE scan_date = ? AND strategy_id = ?",
-            [scan_key, strategy_id],
-        )
-
+        
+        # Native native native upsert via INSERT OR REPLACE
         conn.execute(
             """
-            INSERT INTO scans (
+            INSERT OR REPLACE INTO scans (
                 scan_date, scan_time, universe_size, eligible_count, excluded_count,
                 tier1_count, tier2_count, tier3_count, filtered_count, actionable_count,
                 regime, regime_multiplier, archive_dir, json_path, strategy_id
@@ -173,7 +167,7 @@ def upsert_scan_report(
             elig = t.get("eligibility") or {}
             conn.execute(
                 """
-                INSERT INTO ticker_scores (
+                INSERT OR REPLACE INTO ticker_scores (
                     scan_date, ticker, eligible, tier, sector_etf,
                     raw_score, normalized_score, final_score, filter_reason, strategy_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -191,11 +185,12 @@ def upsert_scan_report(
                     strategy_id,
                 ],
             )
+            
             scores = t.get("scores") or {}
             for component, comp in scores.items():
                 conn.execute(
                     """
-                    INSERT INTO component_scores (
+                    INSERT OR REPLACE INTO component_scores (
                         scan_date, ticker, component, score, max_score, strategy_id
                     ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
@@ -269,7 +264,7 @@ def upsert_lynch_report(
     archive_dir: Path | None = None,
     json_path: Path | None = None,
 ) -> None:
-    """Insert or replace one day's Lynch scan into DuckDB."""
+    """Insert or replace one day's Lynch scan into DuckDB using native REPLACE syntax."""
     summary = report["scan_summary"]
     cats = summary["category_counts"]
     scan_key = scan_date.isoformat()
@@ -277,12 +272,12 @@ def upsert_lynch_report(
     conn = _connect()
     try:
         conn.execute("BEGIN")
-        conn.execute("DELETE FROM lynch_ticker_scores WHERE scan_date = ?", [scan_key])
-        conn.execute("DELETE FROM lynch_scans WHERE scan_date = ?", [scan_key])
-
         conn.execute(
             """
-            INSERT INTO lynch_scans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO lynch_scans (
+                scan_date, scan_time, preset, universe_size, passed_count,
+                fast_grower_count, stalwart_count, asset_play_count, archive_dir, json_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 scan_key,
@@ -303,7 +298,10 @@ def upsert_lynch_report(
             cats_list = ",".join(t.get("categories", []))
             conn.execute(
                 """
-                INSERT INTO lynch_ticker_scores VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO lynch_ticker_scores (
+                    scan_date, ticker, passed, lynch_score, categories, pe_ratio,
+                    peg_ratio, eps_growth_5y, debt_to_equity, institutional_pct, analyst_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     scan_key,

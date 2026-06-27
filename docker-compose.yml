@@ -17,6 +17,6 @@ services:
       - ./data/tickers.txt:/app/data/tickers.txt
       # New read-only mount giving access to finance-vibe's data
       - /mnt/fast/finance-vibe-data:/app/finance_vibe_data:ro
-    command: scheduler
+    command: tail -f /dev/null
     ports:
       - "5001:5000"
