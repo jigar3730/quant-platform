@@ -8,6 +8,9 @@ from pathlib import Path
 
 from quant_platform.config import (
     DEFAULT_LYNCH_CSV,
+    DEFAULT_LYNCH_DRY_RUN_CSV,
+    DEFAULT_LYNCH_DRY_RUN_JSON,
+    DEFAULT_LYNCH_DRY_RUN_MD,
     DEFAULT_LYNCH_JSON,
     DEFAULT_LYNCH_MD,
     DEFAULT_TICKERS_FILE,
@@ -58,7 +61,23 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Archive to data/history/YYYY-MM-DD/ and upsert DuckDB",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Write outputs under data/output/dry_run/; skip archive",
+    )
     args = parser.parse_args(argv)
+
+    if args.dry_run and args.archive:
+        parser.error("--dry-run cannot be combined with --archive")
+
+    if args.dry_run:
+        if args.output == DEFAULT_LYNCH_CSV:
+            args.output = DEFAULT_LYNCH_DRY_RUN_CSV
+        if args.report_json == DEFAULT_LYNCH_JSON:
+            args.report_json = DEFAULT_LYNCH_DRY_RUN_JSON
+        if args.report_md == DEFAULT_LYNCH_MD:
+            args.report_md = DEFAULT_LYNCH_DRY_RUN_MD
 
     if args.archive and not args.report:
         args.report = "both"

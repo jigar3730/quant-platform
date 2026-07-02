@@ -106,6 +106,32 @@ def _ensure_strategy_id_columns(conn: duckdb.DuckDBPyConnection) -> None:
             )
 
 
+def _clear_scan_day(
+    conn: duckdb.DuckDBPyConnection,
+    scan_key: str,
+    strategy_id: str,
+) -> None:
+    """Remove prior rows for a scan day so re-runs succeed on legacy PK layouts."""
+    cols = {row[0] for row in conn.execute("DESCRIBE scans").fetchall()}
+    if "strategy_id" in cols:
+        conn.execute(
+            "DELETE FROM component_scores WHERE scan_date = ? AND strategy_id = ?",
+            [scan_key, strategy_id],
+        )
+        conn.execute(
+            "DELETE FROM ticker_scores WHERE scan_date = ? AND strategy_id = ?",
+            [scan_key, strategy_id],
+        )
+        conn.execute(
+            "DELETE FROM scans WHERE scan_date = ? AND strategy_id = ?",
+            [scan_key, strategy_id],
+        )
+    else:
+        conn.execute("DELETE FROM component_scores WHERE scan_date = ?", [scan_key])
+        conn.execute("DELETE FROM ticker_scores WHERE scan_date = ?", [scan_key])
+        conn.execute("DELETE FROM scans WHERE scan_date = ?", [scan_key])
+
+
 def upsert_scan_report(
     report: dict,
     *,
@@ -133,8 +159,8 @@ def upsert_scan_report(
     conn = _connect()
     try:
         conn.execute("BEGIN")
-        
-        # Native native native upsert via INSERT OR REPLACE
+        _clear_scan_day(conn, scan_key, strategy_id)
+
         conn.execute(
             """
             INSERT OR REPLACE INTO scans (

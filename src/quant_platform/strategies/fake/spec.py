@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from quant_platform.engine.context import ScanContext
 from quant_platform.engine.protocols import FactorBinding, StrategySpec
 from quant_platform.engine.types import FactorResult, FilterResult, TickerResult
 from quant_platform.regime.market import MarketRegime
-
-from quant_platform.engine.context import ScanContext
 
 
 @dataclass

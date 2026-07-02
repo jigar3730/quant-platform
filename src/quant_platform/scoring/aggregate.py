@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from quant_platform.regime.market import MarketRegime
 from quant_platform.strategies.breakout.aggregate import build_results_table
 from quant_platform.strategies.breakout.tiers import assign_tier_from_row as assign_tier
 

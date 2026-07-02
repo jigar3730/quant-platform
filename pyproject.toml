@@ -46,5 +46,8 @@ addopts = "-m 'not integration'"
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint.per-file-ignores]
+"src/quant_platform/notify/email.py" = ["E501"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]

@@ -21,6 +21,7 @@ WORKDIR /app
 # Copy project configuration and source code
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY tests ./tests
 
 # Install project with dev and visualization extras for local Linux & Dev Container consistency
 RUN uv pip install --system -e .[dev,viz]

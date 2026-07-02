@@ -5,7 +5,6 @@ from quant_platform.config import (
     DEFAULT_DRY_RUN_MD,
     DEFAULT_OUTPUT_CSV,
     DEFAULT_OUTPUT_JSON,
-    DEFAULT_OUTPUT_MD,
 )
 
 

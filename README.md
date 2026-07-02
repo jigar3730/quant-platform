@@ -18,6 +18,16 @@ A quantitative stock scanning pipeline that identifies high-quality breakout can
 - Email alerts for actionable tickers (Tier 1 and Tier 2)
 - Docker deployment with 5 PM scheduled scans
 
+## Stack layout (this server)
+
+| Service | Port | Role |
+|---------|------|------|
+| **quant-scanner** (this repo) | 5001 | Legacy breakout/Lynch scanner, DuckDB history |
+| **quant-hub** | 5002 | Postgres-backed scanner (primary long-term; ML phase cron) |
+| **finance-vibe** | 5000 | Swing setup + trade plan pipeline |
+
+Host schedules live in `scripts/host-crontab.txt` (5:30 PM finance-vibe daily, 5:47 PM quant-daily). Container backup cron is in `docker/crontab`. Ticker lists come from `/mnt/fast/quant-data/data/tickers.txt` via the data volume — do not bind-mount an empty `data/tickers.txt` over it.
+
 ## Requirements
 
 - Python 3.12+

@@ -65,7 +65,7 @@ def test_get_actionable_tickers():
 def test_build_actionable_email():
     subject, html = build_actionable_email(_report(), scan_date=date(2026, 6, 6))
     assert "2026-06-06" in subject
-    assert "2 actionable" in subject
+    assert "2 Actionable" in subject
     assert "AAA" in html
     assert "BBB" in html
     assert "CCC" not in html

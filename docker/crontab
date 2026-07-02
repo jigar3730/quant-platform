@@ -1,23 +1,12 @@
 # ==============================================================================
-# QUANT SCANNER SCHEDULES
+# QUANT SCANNER SCHEDULES (container-local)
 # Cron Format: [Min] [Hour] [Day-of-Month] [Month] [Day-of-Week] [User] [Command]
+# Times are America/New_York (container TZ).
+# Host crontab also runs docker exec jobs — keep schedules aligned.
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Breakout Scanner
-# ------------------------------------------------------------------------------
-# Runs: Mon, Tue, Wed, Thu, Fri at 17:17 (5:17 PM EDT)
-# Details: Loads system environment variables, runs the core breakout daily scan,
-#          and appends execution output to cron.log.
-# ------------------------------------------------------------------------------
-# 17 17 * * 1-5 root . /etc/environment; quant-daily >> /app/logs/cron.log 2>&1
+# Mon–Fri 5:47 PM ET — daily breakout scan, archive, and email
+47 17 * * 1-5 root . /etc/environment; quant-daily >> /app/logs/cron.log 2>&1
 
-# ------------------------------------------------------------------------------
-# Peter Lynch Value Scanner
-# ------------------------------------------------------------------------------
-# Runs: Fridays only at 18:17 (6:17 PM EDT)
-# Details: Loads system environment variables, runs the weekly lynch valuation 
-#          analysis, compiles both types of reports, archives results, 
-#          and appends logs to cron.log.
-# ------------------------------------------------------------------------------
-# 17 18 * * 5 root . /etc/environment; quant-lynch --report both --archive >> /app/logs/cron.log 2>&1
+# Fri 6:17 PM ET — Peter Lynch weekly scan, archive, and email
+17 18 * * 5 root . /etc/environment; quant-lynch --report both --archive >> /app/logs/cron.log 2>&1

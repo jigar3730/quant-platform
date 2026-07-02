@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   scanner:
     build:
@@ -14,9 +12,8 @@ services:
     volumes:
       - /mnt/fast/quant-data/data:/app/data
       - /mnt/fast/quant-data/logs:/app/logs
-      - ./data/tickers.txt:/app/data/tickers.txt
-      # New read-only mount giving access to finance-vibe's data
+      # finance-vibe log outputs (read-only) for digest email embed
       - /mnt/fast/finance-vibe-data:/app/finance_vibe_data:ro
-    command: tail -f /dev/null
+    command: scheduler
     ports:
       - "5001:5000"

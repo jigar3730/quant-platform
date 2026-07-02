@@ -1,4 +1,3 @@
-import pandas as pd
 
 from quant_platform.viz.display import format_display_value
 from quant_platform.viz.lynch_data import lynch_checks_dataframe

@@ -1,0 +1,15 @@
+# Host-layer crontab (install: crontab /opt/stacks/quant-platform/scripts/host-crontab.txt)
+# Times are America/New_York (system TZ must be America/New_York).
+#
+# quant-hub scans + digest emails run inside the quant-hub container cron
+# (see /opt/stacks/quant-hub/docker/crontab). Do not duplicate quant-scanner here.
+
+# Mon–Fri 5:30 PM ET — Finance-Vibe daily pipeline
+30 17 * * 1-5 /usr/bin/docker exec -w /app finance_vibe python src/finance_vibe/run_vibe.py --mode daily >> /tmp/finance_vibe_cron.log 2>&1
+
+# Fri 6:00 PM ET — Finance-Vibe weekly pipeline
+0 18 * * 5 /usr/bin/docker exec -w /app finance_vibe python src/finance_vibe/run_vibe.py --mode weekly >> /tmp/finance_vibe_cron.log 2>&1
+
+# --- Legacy quant-scanner (disabled — quant-hub handles breakout/Lynch/digests) ---
+# 47 17 * * 1-5 /usr/bin/docker exec -w /app quant-scanner quant-daily >> /mnt/fast/quant-data/logs/cron.log 2>&1
+# 17 18 * * 5 /usr/bin/docker exec -w /app quant-scanner quant-lynch --report both --archive >> /mnt/fast/quant-data/logs/cron.log 2>&1
