@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import html
 import os
 import smtplib
 from dataclasses import dataclass
@@ -39,42 +41,96 @@ class EmailConfig:
 def get_actionable_tickers(report: dict) -> list[dict]:
     return [t for t in report.get("tickers", []) if t.get("tier") in ("Tier 1", "Tier 2")]
 
-
 def _get_latest_finance_vibe_html() -> str:
-    """Scans the shared volume path for the latest Finance-Vibe logs and formats them."""
-    vibe_logs_dir = Path("/app/finance_vibe_data/logs")
+    """Scans the nested daily/weekly paths for today's Finance-Vibe CSV logs and formats them into an HTML table."""
+    base_logs_dir = Path("/app/finance_vibe_data/logs")
+    
+    # Target the daily folder for the daily crontab run
+    vibe_logs_dir = base_logs_dir / "daily"
+    
+    # Fallback to weekly if daily folder doesn't exist or if checking on a weekend
+    if not vibe_logs_dir.exists() or date.today().weekday() >= 5:
+        vibe_logs_dir = base_logs_dir / "weekly"
+
     if not vibe_logs_dir.exists():
-        return """
+        return f"""
         <div style="background-color: #fcf8e3; border: 1px solid #faf2cc; color: #8a6d3b; padding: 12px; border-radius: 4px; font-size: 14px;">
-            ⚠️ Finance-Vibe directory not found at volume mount path.
+            ⚠️ Finance-Vibe directory not found at volume mount path ({vibe_logs_dir}).
         </div>"""
 
-    # Look for files in the logs directory
-    files = [f for f in vibe_logs_dir.iterdir() if f.is_file() and not f.name.startswith(".")]
+    # Enforce strict matching for TODAY's date string (e.g., 2026-07-03)
+    today_str = date.today().strftime("%Y-%m-%d")
+    files = [
+        f for f in vibe_logs_dir.iterdir() 
+        if f.is_file() and not f.name.startswith(".") and today_str in f.name
+    ]
+    
     if not files:
-        return "<p style='color: #777; font-style: italic;'>No Finance-Vibe log outputs found for today yet.</p>"
+        return f"<p style='color: #777; font-style: italic;'>No Finance-Vibe log outputs found in /{vibe_logs_dir.name} for today ({today_str}) yet.</p>"
 
-    # Get the single most recent log file to extract contents
+    # Pick the newest file matching today's date
     latest_file = max(files, key=os.path.getmtime)
     
     try:
         content = latest_file.read_text(encoding="utf-8").strip()
-        # Convert simple line breaks to HTML breaks for safe display
-        formatted_content = content.replace("\n", "<br>").replace(" ", "&nbsp;")
+        if not content:
+            return "<p style='color: #777; font-style: italic;'>Finance-Vibe log file is empty.</p>"
+
+        # Parse CSV lines
+        lines = content.splitlines()
+        reader = csv.reader(lines)
+        rows = list(reader)
         
+        if not rows:
+            return "<p style='color: #777; font-style: italic;'>No CSV data found in the file.</p>"
+
+        # Build headers
+        headers = rows[0]
+        th_elements = "".join(
+            f"<th style='padding: 10px; border-bottom: 2px solid #334155; font-size: 11px; text-transform: uppercase; color: #94a3b8; text-align: left;'>{html.escape(h)}</th>"
+            for h in headers
+        )
+        
+        # Build data rows
+        tr_elements = []
+        for r in rows[1:]:
+            td_elements = ""
+            for i, val in enumerate(r):
+                val_escaped = html.escape(val)
+                
+                # Column 0 is the Symbol (Ticker)
+                if i == 0:
+                    gf_link = f"https://finance.yahoo.com/quote/{val_escaped}"
+                    ticker_cell = f'<a href="{gf_link}" target="_blank" style="color: #a855f7; text-decoration: none; font-weight: bold;">{val_escaped} ↗</a>'
+                    td_elements += f"<td style='padding: 10px; font-size: 13px;'>{ticker_cell}</td>"
+                else:
+                    td_elements += f"<td style='padding: 10px; font-size: 13px; color: #cbd5e1;'>{val_escaped}</td>"
+            tr_elements.append(f"<tr style='border-bottom: 1px solid #2d2d2d;'>{td_elements}</tr>")
+
+        table_rows_html = "\n".join(tr_elements)
+
         return f"""
         <div style="background-color: #1e1e1e; border: 1px solid #333; border-radius: 6px; padding: 15px; margin-top: 10px;">
-            <div style="font-size: 12px; color: #aaa; margin-bottom: 8px; font-family: monospace; border-bottom: 1px solid #333; padding-bottom: 4px;">
-                SOURCE FILE: {latest_file.name}
+            <div style="font-size: 12px; color: #aaa; margin-bottom: 12px; font-family: monospace; border-bottom: 1px solid #333; padding-bottom: 4px;">
+                SOURCE FILE: {vibe_logs_dir.name}/{latest_file.name}
             </div>
-            <div style="font-family: 'Courier New', Courier, monospace; font-size: 13px; color: #d4d4d4; line-height: 1.5; overflow-x: auto;">
-                {formatted_content}
+            <div style="overflow-x: auto; background-color: #0f172a; border: 1px solid #334155; border-radius: 6px;">
+                <table cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; text-align: left; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">
+                    <thead>
+                        <tr style="background-color: #1e293b;">
+                            {th_elements}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {table_rows_html}
+                    </tbody>
+                </table>
             </div>
         </div>
         """
     except Exception as e:
         return f"<p style='color: #d9534f;'>Error parsing Finance-Vibe file: {str(e)}</p>"
-
+    
 
 def build_actionable_email(
     report: dict,
@@ -103,12 +159,10 @@ def build_actionable_email(
         comp = scores.get("compression", {}).get("score", "-")
         vol = scores.get("relative_volume", {}).get("score", "-")
         
-        # 1. Interactive Hyperlink Conversion
         ticker = t['ticker']
         tv_link = f"https://www.tradingview.com/chart/?symbol={ticker}"
         ticker_cell = f'<a href="{tv_link}" target="_blank" style="color: #38bdf8; text-decoration: none; font-weight: bold;">{ticker} ↗</a>'
         
-        # 2. Modern Color-Coded Badges
         if t['tier'] == "Tier 1":
             tier_badge = '<span style="background-color: #022c22; color: #4ade80; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; border: 1px solid #064e3b;">Tier 1</span>'
         else:
@@ -134,7 +188,7 @@ def build_actionable_email(
     # Fetch the embedded Finance Vibe updates
     finance_vibe_section = _get_latest_finance_vibe_html()
 
-    html = f"""
+    html_content = f"""
     <html>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px;">
         <div style="max-width: 1000px; margin: 0 auto; background-color: #1e293b; border-radius: 8px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);">
@@ -206,7 +260,7 @@ def build_actionable_email(
     </body>
     </html>
     """
-    return subject, html
+    return subject, html_content
 
 
 def _component_details_html(tickers: list[dict]) -> str:
@@ -241,12 +295,12 @@ def send_scan_email(
     if not config:
         return False
 
-    subject, html = build_actionable_email(report, scan_date=scan_date, archive_dir=archive_dir)
+    subject, html_body = build_actionable_email(report, scan_date=scan_date, archive_dir=archive_dir)
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = config.from_addr
     msg["To"] = ", ".join(config.to_addrs)
-    msg.attach(MIMEText(html, "html"))
+    msg.attach(MIMEText(html_body, "html"))
 
     with smtplib.SMTP(config.host, config.port, timeout=30) as server:
         if config.use_tls:
